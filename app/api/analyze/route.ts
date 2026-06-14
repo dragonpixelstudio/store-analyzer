@@ -257,7 +257,7 @@ export async function POST(req: Request) {
     const parts: any[] = [
       {
         text: `
-You are Dragon Pixel Launch Analyzer.
+You are Dragon Pixel Store Analyzer.
 
 You do NOT score.
 

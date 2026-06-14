@@ -71,10 +71,10 @@ export default function Home() {
         Accept: "application/json",
       },
       body: JSON.stringify({
-        _subject: "Launch Analyzer Fix Request",
+        _subject: "Store Analyzer Fix Request",
         email: clientEmail,
         message: report,
-        source: "Dragon Pixel Launch Analyzer",
+        source: "Dragon Pixel Store Analyzer",
       }),
     });
 
@@ -95,25 +95,23 @@ export default function Home() {
 
       <section className="relative mx-auto max-w-6xl px-6 py-10">
         <header className="mb-10 flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="mb-3 text-xs font-bold uppercase tracking-[0.35em] text-cyan-300">
-              Dragon Pixel Studio
-            </p>
-            <h1 className="max-w-3xl text-4xl font-black tracking-tight md:text-6xl">
-              Launch Analyzer
-            </h1>
-            <p className="mt-4 max-w-2xl text-base leading-7 text-slate-300">
-              Upload your game icon and store screenshots. Get a conversion-focused
-              launch review using the Dragon Pixel scoring engine.
-            </p>
-          </div>
+<div>
+  <img
+    src="/logo.png"
+    alt="Dragon Pixel Studio"
+    className="mb-5 h-auto w-56 opacity-90"
+  />
 
-          <div className="rounded-2xl border border-cyan-400/20 bg-cyan-400/10 px-5 py-4">
-            <p className="text-xs uppercase tracking-[0.25em] text-cyan-200">
-              Free Tool
-            </p>
-            <p className="mt-1 text-sm text-slate-200">
-              Shelf test • Click pull • Gameplay clarity
+  <p className="mb-3 text-xs font-bold uppercase tracking-[0.35em] text-cyan-300">
+    Dragon Pixel Studio
+  </p>
+
+  <h1 className="max-w-3xl text-4xl font-black tracking-tight md:text-6xl">
+    Store Analyzer
+  </h1>
+            <p className="mt-4 max-w-2xl text-sm leading-7 text-slate-300">
+Upload your game icon and store assets. Get a conversion-focused
+review powered by the Dragon Pixel scoring engine.
             </p>
           </div>
         </header>
@@ -168,7 +166,7 @@ export default function Home() {
               <button
                 onClick={analyze}
                 disabled={loading || (!icon && screenshots.length === 0)}
-                className="w-full rounded-2xl bg-cyan-300 px-6 py-5 text-sm font-black uppercase tracking-[0.18em] text-black shadow-[0_0_38px_rgba(34,211,238,0.38)] transition hover:bg-white hover:shadow-[0_0_55px_rgba(34,211,238,0.58)] disabled:cursor-not-allowed disabled:opacity-40"
+                className="w-full rounded-2xl bg-cyan-300 px-6 py-6 text-sm font-black uppercase tracking-[0.18em] text-black shadow-[0_0_38px_rgba(34,211,238,0.38)] transition hover:bg-white hover:shadow-[0_0_55px_rgba(34,211,238,0.58)] disabled:cursor-not-allowed disabled:opacity-40"
               >
                 {loading ? "Analyzing..." : "Analyze Assets"}
               </button>
