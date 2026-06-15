@@ -19,20 +19,44 @@ export default function Home() {
     [screenshots]
   );
 
-  async function analyze() {
-    if (!icon && screenshots.length === 0) return;
+async function analyze() {
+  if (loading) return;
 
-    const formData = new FormData();
-    if (icon) formData.append("icon", icon);
-    screenshots.forEach((file) => formData.append("screenshots", file));
+  if (!icon && screenshots.length === 0) return;
 
-    setLoading(true);
-    setReport("");
-    setScore(null);
-    setPotential(null);
-    setVerdict("");
-    setHelpStatus("");
+  const MAX_FILE_BYTES = 2 * 1024 * 1024;
 
+  if (screenshots.length > 3) {
+    setReport("Upload at most 3 screenshots.");
+    return;
+  }
+
+  const allFiles = [icon, ...screenshots].filter(Boolean) as File[];
+
+  const nonImage = allFiles.find((file) => !file.type.startsWith("image/"));
+  if (nonImage) {
+    setReport(`${nonImage.name} is not an image file.`);
+    return;
+  }
+
+  const tooBig = allFiles.find((file) => file.size > MAX_FILE_BYTES);
+  if (tooBig) {
+    setReport(`${tooBig.name} is over 2 MB.`);
+    return;
+  }
+
+  const formData = new FormData();
+  if (icon) formData.append("icon", icon);
+  screenshots.forEach((file) => formData.append("screenshots", file));
+
+  setLoading(true);
+  setReport("");
+  setScore(null);
+  setPotential(null);
+  setVerdict("");
+  setHelpStatus("");
+
+  try {
     const res = await fetch("/api/analyze", {
       method: "POST",
       body: formData,
@@ -44,17 +68,31 @@ export default function Home() {
     try {
       data = raw ? JSON.parse(raw) : {};
     } catch {
-      setReport("Server returned invalid JSON:\n\n" + raw);
-      setLoading(false);
+      console.error("Bad JSON from /api/analyze:", raw);
+      setReport("The server returned an unexpected response. Please try again.");
       return;
     }
 
-    setReport(data.report || data.error || "No report returned.");
+    if (!res.ok || data.error) {
+      setReport(
+        data.error ||
+          `Request failed (${res.status}). Please try again in a moment.`
+      );
+      return;
+    }
+
+    setReport(data.report || "No report returned.");
     setScore(data.calculated?.launchScore ?? null);
     setPotential(data.calculated?.potentialAfterFixes ?? null);
     setVerdict(data.verdict || "");
+  } catch {
+    setReport(
+      "Could not reach the analyzer. Check your connection and try again."
+    );
+  } finally {
     setLoading(false);
   }
+}
 
   async function requestHelp() {
     if (!clientEmail || !report) {
