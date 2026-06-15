@@ -21,6 +21,7 @@
 }
 
 body {
+  position: relative;
   background:
     radial-gradient(circle at 80% 8%, rgba(255, 61, 180, 0.1), transparent 34%),
     radial-gradient(circle at 12% 22%, rgba(24, 224, 255, 0.1), transparent 34%),
@@ -31,6 +32,19 @@ body {
   text-rendering: optimizeLegibility;
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
+}
+
+body::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  opacity: 0.4;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
+  background-size: 56px 56px, 56px 56px;
 }
 
 /* Orbitron for display headings (use className="font-brand"). */
@@ -48,6 +62,7 @@ body {
     transform: translate(4%, 3%) rotate(8deg);
   }
 }
+
 @keyframes dpx-pulse {
   0%,
   100% {
@@ -57,9 +72,11 @@ body {
     box-shadow: inset 0 0 22px rgba(24, 224, 255, 0.16);
   }
 }
+
 .dpx-drift {
   animation: dpx-drift 14s ease-in-out infinite alternate;
 }
+
 .dpx-pulse {
   animation: dpx-pulse 2.8s ease-in-out infinite;
 }

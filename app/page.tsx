@@ -306,7 +306,13 @@ export default function Home() {
           rel="noopener noreferrer"
           className="mb-6 inline-flex items-center gap-2.5"
         >
-          <Image src="/logo.png" alt="Dragon Pixel Studio" width={132} height={28} className="h-7 w-auto opacity-90" />
+          <Image
+  src="/logo.png"
+  alt="Dragon Pixel Studio"
+  width={232}
+  height={58}
+  className="h-12 w-auto opacity-95 md:h-14"
+/>
         </a>
         <h1
           className="font-brand text-[clamp(40px,7vw,72px)] font-black leading-[.98] text-transparent bg-clip-text"
