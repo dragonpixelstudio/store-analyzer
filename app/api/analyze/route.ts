@@ -1,4 +1,5 @@
 import { GoogleGenAI } from "@google/genai";
+import { ipRatelimit, globalRatelimit, getClientIp } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 
@@ -242,6 +243,24 @@ export async function POST(req: Request) {
         { status: 500 }
       );
     }
+
+    const ip = getClientIp(req);
+
+const perIp = await ipRatelimit.limit(ip);
+if (!perIp.success) {
+  return Response.json(
+    { error: "You've hit the hourly limit. Please try again later." },
+    { status: 429 }
+  );
+}
+
+const global = await globalRatelimit.limit("global");
+if (!global.success) {
+  return Response.json(
+    { error: "The analyzer is at daily capacity. Please try again tomorrow." },
+    { status: 429 }
+  );
+}
 
     const formData = await req.formData();
     const icon = formData.get("icon") as File | null;
