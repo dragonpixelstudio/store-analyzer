@@ -159,7 +159,7 @@ review powered by the Dragon Pixel scoring engine.
             <div className="mb-6">
               <h2 className="text-2xl font-bold">Analyze Store Assets</h2>
               <p className="mt-2 text-sm leading-6 text-slate-400">
-                Best test: one icon plus 3–5 real store screenshots.
+                Best test: one icon plus up to 3 real store screenshots.
               </p>
             </div>
 
@@ -215,7 +215,7 @@ review powered by the Dragon Pixel scoring engine.
               <p className="mt-2">
                 Gemini observes the assets. Dragon Pixel calculates the score
                 using fixed rules for shelf readability, click pull, gameplay
-                clarity, emotional signal, risk, and polish.
+                clarity, emotional signal, marketing confidence, and polish.
               </p>
             </div>
           </aside>
@@ -237,7 +237,7 @@ review powered by the Dragon Pixel scoring engine.
                 <div className="mb-6 h-16 w-16 animate-pulse rounded-full bg-cyan-300 shadow-[0_0_80px_rgba(34,211,238,0.8)]" />
                 <h2 className="text-2xl font-black">Running Dragon Pixel review</h2>
                 <p className="mt-3 text-sm text-slate-400">
-                  Checking shelf readability, click pull, gameplay clarity, and marketing risk.
+                  Checking shelf readability, click pull, gameplay clarity and marketing confidence.
                 </p>
               </div>
             )}
