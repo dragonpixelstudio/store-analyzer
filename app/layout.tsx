@@ -3,13 +3,13 @@ import { Exo_2, Inter } from "next/font/google";
 import "./globals.css";
 
 const exo = Exo_2({
-  variable: "--font-exo",
+  variable: "--font-brand",
   subsets: ["latin"],
   weight: ["600", "700", "800", "900"],
 });
 
 const inter = Inter({
-  variable: "--font-inter",
+  variable: "--font-body",
   subsets: ["latin"],
   weight: ["400", "500", "600", "700", "800"],
 });
@@ -26,11 +26,10 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <html
-      lang="en"
-      className={`${exo.variable} ${inter.variable} h-full antialiased`}
-    >
-      <body className="min-h-full flex flex-col">{children}</body>
+    <html lang="en">
+      <body className={`${exo.variable} ${inter.variable}`}>
+        {children}
+      </body>
     </html>
   );
 }

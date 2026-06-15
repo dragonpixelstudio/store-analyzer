@@ -237,10 +237,6 @@ export default function Home() {
               className="mb-6 h-auto w-48 opacity-90 sm:w-56"
             />
 
-            <p className="mb-3 text-xs font-bold uppercase tracking-[0.35em] text-cyan-300">
-              Dragon Pixel Studio
-            </p>
-
             <h1 className="font-brand max-w-3xl text-4xl font-black tracking-normal md:text-6xl">
               Store Analyzer
             </h1>
