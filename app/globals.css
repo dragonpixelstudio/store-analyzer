@@ -40,11 +40,30 @@ body::before {
   inset: 0;
   z-index: 0;
   pointer-events: none;
-  opacity: 0.4;
   background-image:
-    linear-gradient(rgba(255, 255, 255, 0.05) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.05) 1px, transparent 1px);
-  background-size: 56px 56px, 56px 56px;
+    linear-gradient(rgba(255,255,255,0.065) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,0.065) 1px, transparent 1px),
+    linear-gradient(rgba(24,224,255,0.035) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,61,180,0.026) 1px, transparent 1px);
+  background-size: 56px 56px, 56px 56px, 14px 14px, 14px 14px;
+  opacity: 0.34;
+}
+
+body::after {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.28) 78%),
+    repeating-linear-gradient(
+      0deg,
+      rgba(255,255,255,0.012) 0px,
+      rgba(255,255,255,0.012) 1px,
+      transparent 1px,
+      transparent 4px
+    );
 }
 
 /* Orbitron for display headings (use className="font-brand"). */

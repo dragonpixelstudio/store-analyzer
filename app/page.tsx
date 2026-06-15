@@ -448,68 +448,101 @@ export default function Home() {
           </div>
         </section>
 
-        {/* RIGHT — result / sample */}
-        <aside>
-          <div
-            className="relative rounded-3xl border border-[rgba(24,224,255,.28)] p-6 shadow-[0_22px_70px_rgba(0,0,0,.4)]"
-            style={{
-              background:
-                "radial-gradient(circle at 16% 12%,rgba(24,224,255,.16),transparent 40%),radial-gradient(circle at 86% 84%,rgba(255,61,180,.14),transparent 42%),linear-gradient(160deg,rgba(15,22,42,.98),rgba(9,8,22,.96))",
-            }}
-          >
-            <div className="mb-2 flex items-center justify-between">
-              <span className="font-brand text-[11px] font-bold uppercase tracking-[.2em] text-[var(--cyan)]">
-                {hasResult ? "Your result" : "Sample output"}
-              </span>
-              {mode && (
-                <span className="rounded-full border border-[rgba(24,224,255,.3)] bg-[rgba(24,224,255,.08)] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[var(--cyan)]">
-                  {mode}
-                </span>
-              )}
-            </div>
+{/* RIGHT — result / sample */}
+<aside>
+  <div
+    className="relative rounded-3xl border border-[rgba(24,224,255,.28)] p-6 shadow-[0_22px_70px_rgba(0,0,0,.4)]"
+    style={{
+      background:
+        "radial-gradient(circle at 16% 12%,rgba(24,224,255,.16),transparent 40%),radial-gradient(circle at 86% 84%,rgba(255,61,180,.14),transparent 42%),linear-gradient(160deg,rgba(15,22,42,.98),rgba(9,8,22,.96))",
+    }}
+  >
+    {loading ? (
+      <div className="flex min-h-[190px] flex-col items-center justify-center text-center">
+        <div className="relative mb-6 h-24 w-24">
+          <div className="absolute inset-0 animate-ping rounded-full border border-cyan-300/40 bg-cyan-300/10 shadow-[0_0_70px_rgba(24,224,255,0.45)]" />
+          <div className="absolute inset-3 animate-pulse rounded-full border border-fuchsia-300/30 bg-fuchsia-300/10 shadow-[0_0_55px_rgba(255,61,180,0.35)]" />
+          <div className="absolute inset-7 rounded-full bg-cyan-300 shadow-[0_0_55px_rgba(24,224,255,0.85)]" />
+        </div>
 
-            <div className="my-2 grid grid-cols-2 gap-3.5">
-              <div className="rounded-2xl border border-[var(--edge)] bg-white/[.03] px-4 py-3.5">
-                <div className="font-brand text-[10px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">Launch score</div>
-                <div className="font-brand mt-1 text-[38px] font-black leading-[1.05] text-[var(--cyan)]">
-                  {hasResult ? launchVal : "72"}
-                  <span className="text-base font-bold text-[var(--faint)]">/100</span>
-                </div>
-              </div>
-              <div className="rounded-2xl border border-[var(--edge)] bg-white/[.03] px-4 py-3.5">
-                <div className="font-brand text-[10px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">Potential</div>
-                <div className="font-brand mt-1 text-[38px] font-black leading-[1.05] text-[var(--gold)]">
-                  {hasResult ? potentialVal : "88"}
-                  <span className="text-base font-bold text-[var(--faint)]">/100</span>
-                </div>
-              </div>
-            </div>
+        <h2 className="font-brand text-xl font-black">
+          Running Dragon Pixel review
+        </h2>
 
-            <div className="flex items-center gap-2.5 border-t border-[var(--edge)] pt-3.5">
-              <span className="h-2.5 w-2.5 rounded-full bg-[var(--gold)] shadow-[0_0_12px_var(--gold)]" />
-              <span className="text-[15px] font-bold">
-                Verdict: <b className="text-[var(--gold)]">{hasResult ? verdict || "—" : "Strong, needs polish"}</b>
-              </span>
+        <p className="mt-3 max-w-md text-sm font-semibold leading-6 text-[var(--muted)]">
+          Checking shelf readability, click pull, gameplay clarity, and marketing confidence.
+        </p>
+      </div>
+    ) : (
+      <>
+        <div className="mb-2 flex items-center justify-between">
+          <span className="font-brand text-[11px] font-bold uppercase tracking-[.2em] text-[var(--cyan)]">
+            {hasResult ? "Your result" : "Sample output"}
+          </span>
+
+          {mode && (
+            <span className="rounded-full border border-[rgba(24,224,255,.3)] bg-[rgba(24,224,255,.08)] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[var(--cyan)]">
+              {mode}
+            </span>
+          )}
+        </div>
+
+        <div className="my-2 grid grid-cols-2 gap-3.5">
+          <div className="rounded-2xl border border-[var(--edge)] bg-white/[.03] px-4 py-3.5">
+            <div className="font-brand text-[10px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">
+              Launch score
+            </div>
+            <div className="font-brand mt-1 text-[38px] font-black leading-[1.05] text-[var(--cyan)]">
+              {hasResult ? launchVal : "72"}
+              <span className="text-base font-bold text-[var(--faint)]">/100</span>
             </div>
           </div>
 
-          {/* checks (only on empty state) */}
-          {!hasResult && (
-            <div className="mt-4 grid grid-cols-2 gap-2.5">
-              {[
-                ["Shelf test", "Survives at 32px?"],
-                ["Click pull", "Reason to tap"],
-                ["Gameplay clarity", "Read in 3 seconds"],
-                ["Priority fixes", "What to do first"],
-              ].map(([t, d]) => (
-                <div key={t} className="rounded-xl border border-[var(--edge)] bg-white/[.025] px-3.5 py-2.5">
-                  <span className="block text-[13.5px] font-bold">{t}</span>
-                  <span className="block text-[11.5px] font-semibold text-[var(--faint)]">{d}</span>
-                </div>
-              ))}
+          <div className="rounded-2xl border border-[var(--edge)] bg-white/[.03] px-4 py-3.5">
+            <div className="font-brand text-[10px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">
+              Potential
             </div>
-          )}
-        </aside>
+            <div className="font-brand mt-1 text-[38px] font-black leading-[1.05] text-[var(--gold)]">
+              {hasResult ? potentialVal : "88"}
+              <span className="text-base font-bold text-[var(--faint)]">/100</span>
+            </div>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2.5 border-t border-[var(--edge)] pt-3.5">
+          <span className="h-2.5 w-2.5 rounded-full bg-[var(--gold)] shadow-[0_0_12px_var(--gold)]" />
+          <span className="text-[15px] font-bold">
+            Verdict:{" "}
+            <b className="text-[var(--gold)]">
+              {hasResult ? verdict || "—" : "Strong, needs polish"}
+            </b>
+          </span>
+        </div>
+      </>
+    )}
+  </div>
+
+  {!hasResult && !loading && (
+    <div className="mt-4 grid grid-cols-2 gap-2.5">
+      {[
+        ["Shelf test", "Survives at 32px?"],
+        ["Click pull", "Reason to tap"],
+        ["Gameplay clarity", "Read in 3 seconds"],
+        ["Priority fixes", "What to do first"],
+      ].map(([t, d]) => (
+        <div
+          key={t}
+          className="rounded-xl border border-[var(--edge)] bg-white/[.025] px-3.5 py-2.5"
+        >
+          <span className="block text-[13.5px] font-bold">{t}</span>
+          <span className="block text-[11.5px] font-semibold text-[var(--faint)]">
+            {d}
+          </span>
+        </div>
+      ))}
+    </div>
+  )}
+</aside>
       </div>
 
       {/* full report */}
