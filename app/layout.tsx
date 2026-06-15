@@ -1,33 +1,34 @@
 import type { Metadata } from "next";
-import { Exo_2, Inter } from "next/font/google";
+import { Orbitron, Rajdhani } from "next/font/google";
 import "./globals.css";
 
-const exo = Exo_2({
+// Matches the marketing site: Orbitron (display) + Rajdhani (body).
+const orbitron = Orbitron({
   variable: "--font-brand",
   subsets: ["latin"],
-  weight: ["600", "700", "800", "900"],
+  weight: ["500", "700", "900"],
+  display: "swap",
 });
 
-const inter = Inter({
+const rajdhani = Rajdhani({
   variable: "--font-body",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
 });
 
 export const metadata: Metadata = {
   title: "Dragon Pixel Store Analyzer",
   description:
-    "Analyze icons, screenshots, and store assets for conversion improvements.",
+    "Analyze your game icon and store screenshots for conversion before you spend on launch.",
 };
 
 export default function RootLayout({
   children,
-}: Readonly<{
-  children: React.ReactNode;
-}>) {
+}: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${exo.variable} ${inter.variable}`}>
+      <body className={`${orbitron.variable} ${rajdhani.variable}`}>
         {children}
       </body>
     </html>

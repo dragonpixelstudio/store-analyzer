@@ -1,8 +1,16 @@
 @import "tailwindcss";
 
+/* Brand tokens — kept in sync with the marketing site for one identity. */
 :root {
-  --background: #050d20;
-  --foreground: #ffffff;
+  --background: #07070d;
+  --foreground: #f3f3fa;
+  --muted: #b9b9cf;
+  --faint: #7e7e98;
+  --cyan: #18e0ff;
+  --magenta: #ff3db4;
+  --gold: #ffc23d;
+  --green: #69ff00;
+  --edge: rgba(255, 255, 255, 0.1);
 }
 
 @theme inline {
@@ -13,7 +21,11 @@
 }
 
 body {
-  background: var(--background);
+  background:
+    radial-gradient(circle at 80% 8%, rgba(255, 61, 180, 0.1), transparent 34%),
+    radial-gradient(circle at 12% 22%, rgba(24, 224, 255, 0.1), transparent 34%),
+    linear-gradient(135deg, #05070d 0%, #0b101c 55%, #05070d 100%);
+  background-attachment: fixed;
   color: var(--foreground);
   font-family: var(--font-body), system-ui, sans-serif;
   text-rendering: optimizeLegibility;
@@ -21,7 +33,40 @@ body {
   -moz-osx-font-smoothing: grayscale;
 }
 
+/* Orbitron for display headings (use className="font-brand"). */
 .font-brand,
 .font-display {
   font-family: var(--font-brand), var(--font-body), system-ui, sans-serif;
+}
+
+/* Ambient motion — slow + low, tied to the upload panel and dropzone. */
+@keyframes dpx-drift {
+  from {
+    transform: translate(-4%, -3%) rotate(0deg);
+  }
+  to {
+    transform: translate(4%, 3%) rotate(8deg);
+  }
+}
+@keyframes dpx-pulse {
+  0%,
+  100% {
+    box-shadow: inset 0 0 0 1px rgba(24, 224, 255, 0.1);
+  }
+  50% {
+    box-shadow: inset 0 0 22px rgba(24, 224, 255, 0.16);
+  }
+}
+.dpx-drift {
+  animation: dpx-drift 14s ease-in-out infinite alternate;
+}
+.dpx-pulse {
+  animation: dpx-pulse 2.8s ease-in-out infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dpx-drift,
+  .dpx-pulse {
+    animation: none;
+  }
 }

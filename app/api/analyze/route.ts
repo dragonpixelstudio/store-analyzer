@@ -441,11 +441,52 @@ function collectFreeText(obs: Observations): string {
   return out.join(" ").toLowerCase();
 }
 
-function calculateDragonPixelScores(obs: Observations) {
-  const text = collectFreeText(obs);
+type ReviewMode = "iconOnly" | "screenshotsOnly" | "fullStoreSet";
 
+function getReviewMode(hasIcon: boolean, screenshotCount: number): ReviewMode {
+  if (hasIcon && screenshotCount === 0) return "iconOnly";
+  if (!hasIcon && screenshotCount > 0) return "screenshotsOnly";
+  return "fullStoreSet"; // hasIcon && screenshotCount > 0
+}
+
+const REVIEW_MODE_LABEL: Record<ReviewMode, string> = {
+  iconOnly: "Icon only",
+  screenshotsOnly: "Screenshots only",
+  fullStoreSet: "Full store set",
+};
+
+const REVIEW_MODE_NOTE: Record<ReviewMode, string> = {
+  iconOnly:
+    "This review focuses on icon performance. Gameplay clarity needs screenshots, and marketing confidence is partial until the full store set is uploaded — the icon is not being penalised for assets that weren't provided.",
+  screenshotsOnly:
+    "This review focuses on your screenshots. Shelf readability and marketing confidence are partial until an icon is added.",
+  fullStoreSet: "Full review across your icon and screenshots.",
+};
+
+// Remove obvious duplicate/padded observations (case- and filler-insensitive).
+function dedupeList(items?: string[]): string[] {
+  if (!items) return [];
+  const seen = new Set<string>();
+  return items.filter((item) => {
+    const key = item
+      .toLowerCase()
+      .replace(/[^a-z0-9 ]/g, "")
+      .replace(/\b(the|a|an|of|to|that|this|implies|suggests)\b/g, "")
+      .replace(/\s+/g, " ")
+      .trim();
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function calculateDragonPixelScores(obs: Observations, reviewMode: ReviewMode) {
+  const text = collectFreeText(obs);
   const len = (arr?: string[]) => (Array.isArray(arr) ? arr.length : 0);
   const cap = (count: number, max = 3) => Math.min(count, max);
+
+  const hasIcon = reviewMode !== "screenshotsOnly";
+  const hasScreens = reviewMode !== "iconOnly";
 
   let shelfReadability = 50;
   let clickPull = 50;
@@ -459,13 +500,9 @@ function calculateDragonPixelScores(obs: Observations) {
   if (obs.shelfTest?.playerOrMainSubjectVisible) shelfReadability += 15;
   if (obs.shelfTest?.dominantElement) shelfReadability += 10;
   if (len(obs.shelfTest?.visibleElements) >= 2) shelfReadability += 10;
-
   if (obs.shelfTest?.smallSizeRisk) shelfReadability -= 20;
   if (len(obs.shelfTest?.lostElements) >= 2) shelfReadability -= 15;
-
-  if (
-    hasAny(text, ["lost", "blends", "too small", "hard to see", "visual noise"])
-  ) {
+  if (hasAny(text, ["lost", "blends", "too small", "hard to see", "visual noise"])) {
     shelfReadability -= 10;
   }
 
@@ -475,42 +512,27 @@ function calculateDragonPixelScores(obs: Observations) {
   clickPull += cap(len(obs.clickTest?.dangerSignals)) * 6;
   clickPull += cap(len(obs.clickTest?.urgencySignals)) * 6;
   clickPull -= cap(len(obs.clickTest?.clickBlockers)) * 10;
-
   if (hasAny(text, ["generic", "forgettable", "unclear appeal", "no hook"])) {
     clickPull -= 15;
   }
 
-  // GAMEPLAY CLARITY
+  // GAMEPLAY CLARITY (only meaningful with screenshots)
   if (obs.gameplayCommunication?.objectiveClear) gameplayClarity += 15;
   if (obs.gameplayCommunication?.playerActionClear) gameplayClarity += 15;
   if (obs.gameplayCommunication?.rewardClear) gameplayClarity += 10;
   if (obs.gameplayCommunication?.failureStateClear) gameplayClarity += 5;
-
-  gameplayClarity +=
-    cap(len(obs.gameplayCommunication?.understoodIn3Seconds)) * 5;
-
-  gameplayClarity -=
-    cap(len(obs.gameplayCommunication?.unclearIn3Seconds)) * 8;
-
-  if (
-    hasAny(text, [
-      "unclear",
-      "ambiguous",
-      "not immediately clear",
-      "cannot tell",
-    ])
-  ) {
+  gameplayClarity += cap(len(obs.gameplayCommunication?.understoodIn3Seconds)) * 5;
+  gameplayClarity -= cap(len(obs.gameplayCommunication?.unclearIn3Seconds)) * 8;
+  if (hasAny(text, ["unclear", "ambiguous", "not immediately clear", "cannot tell"])) {
     gameplayClarity -= 10;
   }
 
   // EMOTIONAL SIGNAL
   emotionalSignal += cap(len(obs.emotionalSignal?.currentSignals)) * 8;
   emotionalSignal -= cap(len(obs.emotionalSignal?.missingSignals)) * 6;
-
   if (hasAny(text, ["danger", "urgency", "reward", "mastery", "satisfaction"])) {
     emotionalSignal += 10;
   }
-
   if (hasAny(text, ["calm", "static", "flat", "low tension"])) {
     emotionalSignal -= 10;
   }
@@ -519,23 +541,25 @@ function calculateDragonPixelScores(obs: Observations) {
   if (obs.polish?.commercialPolish === "high") visualPolish += 30;
   if (obs.polish?.commercialPolish === "medium") visualPolish += 10;
   if (obs.polish?.commercialPolish === "low") visualPolish -= 25;
-
   visualPolish += cap(len(obs.polish?.strengths)) * 5;
   visualPolish -= cap(len(obs.polish?.weaknesses)) * 7;
-
   if (hasAny(text, ["premium", "polished", "clean", "high-quality", "cohesive"])) {
     visualPolish += 10;
   }
 
-  // MARKETING CONFIDENCE
-  // Higher number = safer to spend marketing money.
-  if (obs.consistency?.iconMatchesScreenshots === false) marketingConfidence -= 20;
+  // MARKETING CONFIDENCE — skip screenshot-dependent penalties when no
+  // screenshots were provided, so an icon-only run isn't punished for them.
+  if (hasScreens && obs.consistency?.iconMatchesScreenshots === false) {
+    marketingConfidence -= 20;
+  }
   if (obs.shelfTest?.smallSizeRisk) marketingConfidence -= 10;
-  if (!obs.gameplayCommunication?.objectiveClear) marketingConfidence -= 10;
-  if (!obs.gameplayCommunication?.playerActionClear) marketingConfidence -= 10;
-
+  if (hasScreens && !obs.gameplayCommunication?.objectiveClear) {
+    marketingConfidence -= 10;
+  }
+  if (hasScreens && !obs.gameplayCommunication?.playerActionClear) {
+    marketingConfidence -= 10;
+  }
   marketingConfidence -= cap(len(obs.clickTest?.clickBlockers)) * 7;
-
   if (
     hasAny(text, [
       "mismatch",
@@ -549,6 +573,11 @@ function calculateDragonPixelScores(obs: Observations) {
     marketingConfidence -= 15;
   }
 
+  // Category ceilings: reserve 93–100 for a real benchmark pass later.
+  // A free tool showing a casual 100 reads as amateur.
+  clickPull = Math.min(clickPull, 92);
+  visualPolish = Math.min(visualPolish, 95);
+
   const scores = {
     shelfReadability: clampScore(shelfReadability),
     clickPull: clampScore(clickPull),
@@ -558,55 +587,105 @@ function calculateDragonPixelScores(obs: Observations) {
     visualPolish: clampScore(visualPolish),
   };
 
-  const weights = {
-    shelfReadability: 20,
-    clickPull: 20,
-    gameplayClarity: 20,
-    emotionalSignal: 15,
-    marketingConfidence: 15,
-    visualPolish: 10,
+  // Which categories the input actually lets us assess.
+  const gameplayAssessed = hasScreens; // needs screenshots
+  const marketingFull = hasIcon && hasScreens; // need both to judge the funnel
+
+  // Mode-specific weights — only assessed categories, renormalised so a
+  // missing category never drags the overall score down.
+  const weightsByMode: Record<ReviewMode, Partial<Record<keyof typeof scores, number>>> = {
+    iconOnly: {
+      shelfReadability: 30,
+      clickPull: 25,
+      visualPolish: 20,
+      emotionalSignal: 15,
+      marketingConfidence: 10, // partial, screenshot-free value
+    },
+    screenshotsOnly: {
+      gameplayClarity: 30,
+      clickPull: 20,
+      emotionalSignal: 20,
+      visualPolish: 20,
+      shelfReadability: 10,
+    },
+    fullStoreSet: {
+      shelfReadability: 20,
+      clickPull: 20,
+      gameplayClarity: 20,
+      emotionalSignal: 15,
+      marketingConfidence: 15,
+      visualPolish: 10,
+    },
   };
 
-  const launchScore = clampScore(
-    (scores.shelfReadability / 100) * weights.shelfReadability +
-      (scores.clickPull / 100) * weights.clickPull +
-      (scores.gameplayClarity / 100) * weights.gameplayClarity +
-      (scores.emotionalSignal / 100) * weights.emotionalSignal +
-      (scores.marketingConfidence / 100) * weights.marketingConfidence +
-      (scores.visualPolish / 100) * weights.visualPolish
-  );
+  const weights = weightsByMode[reviewMode];
+  const totalWeight = Object.values(weights).reduce((a, b) => a + (b ?? 0), 0);
+
+  let launchScore = 0;
+  for (const [key, weight] of Object.entries(weights) as [
+    keyof typeof scores,
+    number
+  ][]) {
+    launchScore += (scores[key] / 100) * weight;
+  }
+  launchScore = clampScore((launchScore / totalWeight) * 100);
 
   const potentialAfterFixes = clampScore(
     launchScore +
-      Math.min(
-        22,
-        len(obs.dragonPixelFixes) * 4 + len(obs.whatHurtsConversion) * 3
-      )
+      Math.min(22, len(obs.dragonPixelFixes) * 4 + len(obs.whatHurtsConversion) * 3)
   );
 
+  // Human-facing breakdown: a number where assessed, a status otherwise.
+  const fmt = (n: number) => `${n}/100`;
+  const breakdown: { key: string; label: string; value: string; assessed: boolean }[] = [
+    { key: "shelfReadability", label: "Shelf Readability", value: fmt(scores.shelfReadability), assessed: true },
+    { key: "clickPull", label: "Click Pull", value: fmt(scores.clickPull), assessed: true },
+    {
+      key: "gameplayClarity",
+      label: "Gameplay Clarity",
+      value: gameplayAssessed ? fmt(scores.gameplayClarity) : "Needs screenshots",
+      assessed: gameplayAssessed,
+    },
+    { key: "emotionalSignal", label: "Emotional Signal", value: fmt(scores.emotionalSignal), assessed: true },
+    {
+      key: "marketingConfidence",
+      label: "Marketing Confidence",
+      value: marketingFull ? fmt(scores.marketingConfidence) : "Partial",
+      assessed: marketingFull,
+    },
+    { key: "visualPolish", label: "Visual Polish", value: fmt(scores.visualPolish), assessed: true },
+  ];
+
   return {
+    reviewMode,
+    reviewModeLabel: REVIEW_MODE_LABEL[reviewMode],
+    reviewModeNote: REVIEW_MODE_NOTE[reviewMode],
     scores,
+    breakdown,
     launchScore,
     potentialAfterFixes,
   };
 }
 
+// New scale — no casual 100s, plain labels people read faster than numbers.
 function verdictFromScore(score: number) {
-  if (score >= 90) return "Production-ready";
-  if (score >= 75) return "Strong, needs polish";
-  if (score >= 60) return "Usable but weak conversion";
-  if (score >= 40) return "Risky";
-  return "Hurting conversion";
+  if (score >= 90) return "Excellent";
+  if (score >= 80) return "Strong";
+  if (score >= 65) return "Usable";
+  if (score >= 50) return "Weak conversion";
+  return "Problem — needs rework";
 }
 
 function bulletList(items?: string[]) {
-  if (!items || items.length === 0) return "- No clear observation returned.";
-  return items.map((item) => `- ${item}`).join("\n");
+  const clean = dedupeList(items);
+  if (clean.length === 0) return "- No clear observation returned.";
+  return clean.map((item) => `- ${item}`).join("\n");
 }
 
 function numberedList(items?: string[]) {
-  if (!items || items.length === 0) return "1. No clear fix returned.";
-  return items.map((item, i) => `${i + 1}. ${item}`).join("\n");
+  const clean = dedupeList(items);
+  if (clean.length === 0) return "1. No clear fix returned.";
+  return clean.map((item, i) => `${i + 1}. ${item}`).join("\n");
 }
 
 export async function OPTIONS(req: Request) {
@@ -815,6 +894,7 @@ Dragon Pixel fixes:
 - Example: "Reduce center bloom by 15% so the player silhouette survives 32px."
 - Example: "Move the red threat closer to the player to create near-miss tension."
 - Example: "Recapture screenshot 2 with a higher score and denser action so Endless Mode reads as mastery, not emptiness."
+- For APP ICONS specifically, less text usually beats more. Do NOT default to "increase stroke" or "make the title bigger". If the title competes with the main subject at 32px, recommend reducing or removing the text so the character/subject carries the icon.
 - Every fix must improve click-through rate, conversion rate, install probability, or ad spend efficiency.
         `,
       },
@@ -868,8 +948,23 @@ Dragon Pixel fixes:
       );
     }
 
-    const calculated = calculateDragonPixelScores(observations);
+    const reviewMode = getReviewMode(Boolean(icon), screenshots.length);
+    const calculated = calculateDragonPixelScores(observations, reviewMode);
     const verdict = verdictFromScore(calculated.launchScore);
+
+    const gameplaySection =
+      calculated.reviewMode === "iconOnly"
+        ? "_Not assessed in icon-only mode. Upload screenshots to evaluate gameplay clarity._"
+        : `### Understood in 3 Seconds\n\n${bulletList(
+            observations.gameplayCommunication?.understoodIn3Seconds
+          )}\n\n### Still Unclear\n\n${bulletList(
+            observations.gameplayCommunication?.unclearIn3Seconds
+          )}`;
+
+    const marketingNote =
+      calculated.reviewMode === "fullStoreSet"
+        ? ""
+        : "\n\n_Marketing confidence is partial — add the full store set (icon + screenshots) for a complete read._";
 
     const report = `
 # Dragon Pixel Store Review
@@ -884,14 +979,15 @@ ${observations.finalCall || "No final call returned."}
 
 ---
 
+## Review Mode — ${calculated.reviewModeLabel}
+
+${calculated.reviewModeNote}
+
+---
+
 ## Score Breakdown
 
-- **Shelf Readability:** ${calculated.scores.shelfReadability}/100
-- **Click Pull:** ${calculated.scores.clickPull}/100
-- **Gameplay Clarity:** ${calculated.scores.gameplayClarity}/100
-- **Emotional Signal:** ${calculated.scores.emotionalSignal}/100
-- **Marketing Confidence:** ${calculated.scores.marketingConfidence}/100
-- **Visual Polish:** ${calculated.scores.visualPolish}/100
+${calculated.breakdown.map((b) => `- **${b.label}:** ${b.value}`).join("\n")}
 
 ---
 
@@ -936,13 +1032,7 @@ ${bulletList(observations.clickTest?.clickBlockers)}
 
 ## Gameplay Communication
 
-### Understood in 3 Seconds
-
-${bulletList(observations.gameplayCommunication?.understoodIn3Seconds)}
-
-### Still Unclear
-
-${bulletList(observations.gameplayCommunication?.unclearIn3Seconds)}
+${gameplaySection}
 
 ---
 
@@ -1010,7 +1100,7 @@ ${numberedList(observations.dragonPixelFixes)}
 
 ## Marketing Confidence
 
-${observations.marketingRiskSummary || "No marketing confidence summary returned."}
+${observations.marketingRiskSummary || "No marketing confidence summary returned."}${marketingNote}
 
 ---
 
