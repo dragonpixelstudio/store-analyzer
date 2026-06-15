@@ -309,8 +309,8 @@ export default function Home() {
           <Image
   src="/logo.png"
   alt="Dragon Pixel Studio"
-  width={232}
-  height={58}
+  width={300}
+  height={64}
   className="h-12 w-auto opacity-95 md:h-14"
 />
         </a>
@@ -406,15 +406,18 @@ export default function Home() {
                         </div>
                       </div>
                       {!a.error && (
-                        <select
-                          value={a.role}
-                          onChange={(e) => setRole(a.id, e.target.value as Role)}
-                          className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-bold uppercase tracking-wide ${
-                            a.role === "screenshot"
-                              ? "border-[rgba(255,61,180,.3)] bg-[rgba(255,61,180,.1)]"
-                              : "border-[rgba(24,224,255,.3)] bg-[rgba(24,224,255,.1)]"
-                          }`}
-                        >
+<select
+  value={a.role}
+  onChange={(e) => setRole(a.id, e.target.value as Role)}
+  className={`cursor-pointer rounded-full border px-3 py-1.5 text-xs font-bold uppercase tracking-wide text-white outline-none ${
+    a.role === "screenshot"
+      ? "border-[rgba(255,61,180,.35)] bg-[#24132b]"
+      : "border-[rgba(24,224,255,.35)] bg-[#102636]"
+  }`}
+  style={{
+    colorScheme: "dark",
+  }}
+>
                           <option value="icon">Icon</option>
                           <option value="screenshot">Screenshot</option>
                         </select>
@@ -458,21 +461,21 @@ export default function Home() {
     }}
   >
     {loading ? (
-      <div className="flex min-h-[190px] flex-col items-center justify-center text-center">
-        <div className="relative mb-6 h-24 w-24">
-          <div className="absolute inset-0 animate-ping rounded-full border border-cyan-300/40 bg-cyan-300/10 shadow-[0_0_70px_rgba(24,224,255,0.45)]" />
-          <div className="absolute inset-3 animate-pulse rounded-full border border-fuchsia-300/30 bg-fuchsia-300/10 shadow-[0_0_55px_rgba(255,61,180,0.35)]" />
-          <div className="absolute inset-7 rounded-full bg-cyan-300 shadow-[0_0_55px_rgba(24,224,255,0.85)]" />
-        </div>
+<div className="flex min-h-[300px] flex-col items-center justify-center px-4 py-8 text-center">
+  <div className="relative mb-10 h-28 w-28">
+    <div className="absolute inset-0 rounded-full border border-cyan-300/25 bg-cyan-300/5 shadow-[0_0_90px_rgba(24,224,255,0.35)]" />
+    <div className="absolute inset-3 animate-ping rounded-full border border-cyan-300/35 bg-cyan-300/10 shadow-[0_0_70px_rgba(24,224,255,0.45)]" />
+    <div className="absolute inset-7 animate-pulse rounded-full bg-cyan-300 shadow-[0_0_60px_rgba(24,224,255,0.9)]" />
+  </div>
 
-        <h2 className="font-brand text-xl font-black">
-          Running Dragon Pixel review
-        </h2>
+  <h2 className="font-brand text-2xl font-black">
+    Running Dragon Pixel review
+  </h2>
 
-        <p className="mt-3 max-w-md text-sm font-semibold leading-6 text-[var(--muted)]">
-          Checking shelf readability, click pull, gameplay clarity, and marketing confidence.
-        </p>
-      </div>
+  <p className="mt-4 max-w-md text-sm font-semibold leading-7 text-[var(--muted)]">
+    Checking shelf readability, click pull, gameplay clarity, and marketing confidence.
+  </p>
+</div>
     ) : (
       <>
         <div className="mb-2 flex items-center justify-between">
