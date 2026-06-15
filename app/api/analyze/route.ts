@@ -1,4 +1,4 @@
-import { GoogleGenAI } from "@google/genai";
+import { GoogleGenAI, type Part } from "@google/genai";
 import { ipRatelimit, globalRatelimit, getClientIp } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
@@ -9,7 +9,17 @@ const ai = new GoogleGenAI({
 });
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2 MB per image
+const MAX_IMAGE_PIXELS = 12_000_000;
 const MAX_SCREENSHOTS = 3;
+const ALLOWED_ORIGINS = new Set([
+  "https://launch.dragonpixelstudio.com",
+  "https://www.dragonpixelstudio.com",
+  "https://dragonpixelstudio.com",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+]);
+
+type CommercialPolish = "low" | "medium" | "high";
 
 type Observations = {
   shelfTest?: {
@@ -42,7 +52,7 @@ type Observations = {
   polish?: {
     strengths?: string[];
     weaknesses?: string[];
-    commercialPolish?: "low" | "medium" | "high";
+    commercialPolish?: CommercialPolish;
   };
   consistency?: {
     iconMatchesScreenshots?: boolean;
@@ -60,6 +70,160 @@ type Observations = {
   marketingRiskSummary?: string;
   finalCall?: string;
 };
+
+type JsonBody =
+  | {
+      error: string;
+    }
+  | {
+      report: string;
+      observations: Observations;
+      calculated: ReturnType<typeof calculateDragonPixelScores>;
+      verdict: string;
+    };
+
+function jsonResponse(body: JsonBody, init?: ResponseInit) {
+  const headers = new Headers(init?.headers);
+  headers.set("Cache-Control", "private, no-store, max-age=0");
+  headers.set("Vary", "Origin");
+
+  return Response.json(body, {
+    ...init,
+    headers,
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value.trim() : undefined;
+}
+
+function booleanValue(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function stringArray(value: unknown): string[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+
+  const items = value
+    .filter((item): item is string => typeof item === "string")
+    .map((item) => item.trim())
+    .filter(Boolean)
+    .slice(0, 12);
+
+  return items.length > 0 ? items : undefined;
+}
+
+function commercialPolishValue(value: unknown): CommercialPolish {
+  if (value === "low" || value === "medium" || value === "high") {
+    return value;
+  }
+
+  return "medium";
+}
+
+function assetReviewValue(value: unknown): Observations["assetReview"] {
+  if (!Array.isArray(value)) return undefined;
+
+  const assets = value
+    .filter(isRecord)
+    .map((asset) => ({
+      assetName: stringValue(asset.assetName) || "Uploaded asset",
+      mainObservation: stringValue(asset.mainObservation) || "",
+      mainIssue: stringValue(asset.mainIssue) || "",
+      bestFix: stringValue(asset.bestFix) || "",
+    }))
+    .slice(0, MAX_SCREENSHOTS + 1);
+
+  return assets.length > 0 ? assets : undefined;
+}
+
+function sanitizeObservations(value: unknown): Observations | null {
+  if (!isRecord(value)) return null;
+
+  const shelfTest = isRecord(value.shelfTest) ? value.shelfTest : {};
+  const clickTest = isRecord(value.clickTest) ? value.clickTest : {};
+  const gameplayCommunication = isRecord(value.gameplayCommunication)
+    ? value.gameplayCommunication
+    : {};
+  const emotionalSignal = isRecord(value.emotionalSignal)
+    ? value.emotionalSignal
+    : {};
+  const polish = isRecord(value.polish) ? value.polish : {};
+  const consistency = isRecord(value.consistency) ? value.consistency : {};
+
+  return {
+    shelfTest: {
+      visibleElements: stringArray(shelfTest.visibleElements),
+      lostElements: stringArray(shelfTest.lostElements),
+      dominantElement: stringValue(shelfTest.dominantElement),
+      focalPointClear: booleanValue(shelfTest.focalPointClear),
+      playerOrMainSubjectVisible: booleanValue(
+        shelfTest.playerOrMainSubjectVisible
+      ),
+      smallSizeRisk: booleanValue(shelfTest.smallSizeRisk),
+    },
+    clickTest: {
+      curiositySignals: stringArray(clickTest.curiositySignals),
+      rewardSignals: stringArray(clickTest.rewardSignals),
+      dangerSignals: stringArray(clickTest.dangerSignals),
+      urgencySignals: stringArray(clickTest.urgencySignals),
+      clickBlockers: stringArray(clickTest.clickBlockers),
+    },
+    gameplayCommunication: {
+      understoodIn3Seconds: stringArray(
+        gameplayCommunication.understoodIn3Seconds
+      ),
+      unclearIn3Seconds: stringArray(gameplayCommunication.unclearIn3Seconds),
+      objectiveClear: booleanValue(gameplayCommunication.objectiveClear),
+      playerActionClear: booleanValue(
+        gameplayCommunication.playerActionClear
+      ),
+      rewardClear: booleanValue(gameplayCommunication.rewardClear),
+      failureStateClear: booleanValue(
+        gameplayCommunication.failureStateClear
+      ),
+    },
+    emotionalSignal: {
+      currentSignals: stringArray(emotionalSignal.currentSignals),
+      missingSignals: stringArray(emotionalSignal.missingSignals),
+    },
+    polish: {
+      strengths: stringArray(polish.strengths),
+      weaknesses: stringArray(polish.weaknesses),
+      commercialPolish: commercialPolishValue(polish.commercialPolish),
+    },
+    consistency: {
+      iconMatchesScreenshots: booleanValue(consistency.iconMatchesScreenshots),
+      notes: stringValue(consistency.notes),
+    },
+    assetReview: assetReviewValue(value.assetReview),
+    whatWorks: stringArray(value.whatWorks),
+    whatHurtsConversion: stringArray(value.whatHurtsConversion),
+    dragonPixelFixes: stringArray(value.dragonPixelFixes),
+    marketingRiskSummary: stringValue(value.marketingRiskSummary),
+    finalCall: stringValue(value.finalCall),
+  };
+}
+
+function isAllowedRequestOrigin(req: Request) {
+  const origin = req.headers.get("origin");
+  if (!origin) return true;
+
+  const host = req.headers.get("host");
+  if (host && origin === `https://${host}`) return true;
+
+  if (ALLOWED_ORIGINS.has(origin)) return true;
+
+  if (process.env.NODE_ENV !== "production" && origin.startsWith("http://")) {
+    return true;
+  }
+
+  return false;
+}
 
 function cleanGeminiJson(rawText: string) {
   return rawText
@@ -107,6 +271,83 @@ function sniffImageMime(buf: Buffer): string | null {
   return null;
 }
 
+function readUInt24LE(buf: Buffer, offset: number) {
+  return buf[offset] | (buf[offset + 1] << 8) | (buf[offset + 2] << 16);
+}
+
+function getImageDimensions(
+  buf: Buffer,
+  mime: string
+): { width: number; height: number } | null {
+  if (mime === "image/png" && buf.length >= 24) {
+    return {
+      width: buf.readUInt32BE(16),
+      height: buf.readUInt32BE(20),
+    };
+  }
+
+  if (mime === "image/jpeg") {
+    let offset = 2;
+    const sofMarkers = new Set([
+      0xc0, 0xc1, 0xc2, 0xc3, 0xc5, 0xc6, 0xc7, 0xc9, 0xca, 0xcb, 0xcd,
+      0xce, 0xcf,
+    ]);
+
+    while (offset + 9 < buf.length) {
+      if (buf[offset] !== 0xff) {
+        offset += 1;
+        continue;
+      }
+
+      const marker = buf[offset + 1];
+      const length = buf.readUInt16BE(offset + 2);
+
+      if (sofMarkers.has(marker)) {
+        return {
+          height: buf.readUInt16BE(offset + 5),
+          width: buf.readUInt16BE(offset + 7),
+        };
+      }
+
+      if (length < 2) return null;
+      offset += 2 + length;
+    }
+  }
+
+  if (
+    mime === "image/webp" &&
+    buf.length >= 30 &&
+    buf.toString("ascii", 0, 4) === "RIFF" &&
+    buf.toString("ascii", 8, 12) === "WEBP"
+  ) {
+    const chunk = buf.toString("ascii", 12, 16);
+
+    if (chunk === "VP8X" && buf.length >= 30) {
+      return {
+        width: readUInt24LE(buf, 24) + 1,
+        height: readUInt24LE(buf, 27) + 1,
+      };
+    }
+
+    if (chunk === "VP8L" && buf.length >= 25) {
+      const bits = buf.readUInt32LE(21);
+      return {
+        width: (bits & 0x3fff) + 1,
+        height: ((bits >> 14) & 0x3fff) + 1,
+      };
+    }
+
+    if (chunk === "VP8 " && buf.length >= 30) {
+      return {
+        width: buf.readUInt16LE(26) & 0x3fff,
+        height: buf.readUInt16LE(28) & 0x3fff,
+      };
+    }
+  }
+
+  return null;
+}
+
 type ImagePartResult =
   | { part: { inlineData: { mimeType: string; data: string } } }
   | { error: string };
@@ -129,6 +370,16 @@ async function prepareImagePart(
   if (!mime) {
     return {
       error: `${label} must be a real PNG, JPEG, or WebP image.`,
+    };
+  }
+
+  const dimensions = getImageDimensions(buffer, mime);
+  if (
+    dimensions &&
+    dimensions.width * dimensions.height > MAX_IMAGE_PIXELS
+  ) {
+    return {
+      error: `${label} is too large in pixel dimensions. Max is 12 megapixels.`,
     };
   }
 
@@ -358,11 +609,44 @@ function numberedList(items?: string[]) {
   return items.map((item, i) => `${i + 1}. ${item}`).join("\n");
 }
 
+export async function OPTIONS(req: Request) {
+  if (!isAllowedRequestOrigin(req)) {
+    return new Response(null, {
+      status: 403,
+      headers: {
+        "Cache-Control": "private, no-store, max-age=0",
+        Vary: "Origin",
+      },
+    });
+  }
+
+  const origin =
+    req.headers.get("origin") || "https://launch.dragonpixelstudio.com";
+
+  return new Response(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": origin,
+      "Access-Control-Allow-Methods": "POST, OPTIONS",
+      "Access-Control-Allow-Headers": "Content-Type",
+      "Cache-Control": "private, no-store, max-age=0",
+      Vary: "Origin",
+    },
+  });
+}
+
 export async function POST(req: Request) {
   try {
+    if (!isAllowedRequestOrigin(req)) {
+      return jsonResponse(
+        { error: "Requests must come from Dragon Pixel Store Analyzer." },
+        { status: 403 }
+      );
+    }
+
     if (!process.env.GEMINI_API_KEY) {
-      return Response.json(
-        { error: "Missing GEMINI_API_KEY in .env.local" },
+      return jsonResponse(
+        { error: "Analyzer service is not configured yet." },
         { status: 500 }
       );
     }
@@ -371,50 +655,60 @@ export async function POST(req: Request) {
 
     const perIp = await ipRatelimit.limit(ip);
     if (!perIp.success) {
-      return Response.json(
+      return jsonResponse(
         { error: "You've hit the hourly limit. Please try again later." },
         { status: 429 }
       );
     }
 
-    
-
-
     const formData = await req.formData();
-const rawIcon = formData.get("icon");
-const rawScreenshots = formData.getAll("screenshots");
+    const rawIcon = formData.get("icon");
+    const rawScreenshots = formData.getAll("screenshots");
 
-const icon = rawIcon instanceof File ? rawIcon : null;
+    const icon = rawIcon instanceof File ? rawIcon : null;
 
-if (rawIcon && !(rawIcon instanceof File)) {
-  return Response.json({ error: "Invalid icon upload." }, { status: 400 });
-}
+    if (rawIcon && !(rawIcon instanceof File)) {
+      return jsonResponse({ error: "Invalid icon upload." }, { status: 400 });
+    }
 
-const invalidScreenshot = rawScreenshots.find((item) => !(item instanceof File));
-if (invalidScreenshot) {
-  return Response.json(
-    { error: "Invalid screenshot upload." },
-    { status: 400 }
-  );
-}
+    const invalidScreenshot = rawScreenshots.find(
+      (item) => !(item instanceof File)
+    );
+    if (invalidScreenshot) {
+      return jsonResponse(
+        { error: "Invalid screenshot upload." },
+        { status: 400 }
+      );
+    }
 
-const screenshots = rawScreenshots as File[];
+    const screenshots = rawScreenshots as File[];
 
     if (!icon && screenshots.length === 0) {
-      return Response.json(
+      return jsonResponse(
         { error: "Upload at least one icon or screenshot." },
         { status: 400 }
       );
     }
 
     if (screenshots.length > MAX_SCREENSHOTS) {
-      return Response.json(
+      return jsonResponse(
         { error: `Upload at most ${MAX_SCREENSHOTS} screenshots.` },
         { status: 400 }
       );
     }
 
-    const parts: any[] = [
+    const global = await globalRatelimit.limit("global");
+    if (!global.success) {
+      return jsonResponse(
+        {
+          error:
+            "The analyzer is at daily capacity. Please try again tomorrow.",
+        },
+        { status: 429 }
+      );
+    }
+
+    const parts: Part[] = [
       {
         text: `
 You are Dragon Pixel Store Analyzer.
@@ -529,7 +823,7 @@ Dragon Pixel fixes:
     if (icon) {
       const result = await prepareImagePart(icon, "Icon");
       if ("error" in result) {
-        return Response.json({ error: result.error }, { status: 400 });
+        return jsonResponse({ error: result.error }, { status: 400 });
       }
       parts.push(result.part);
     }
@@ -537,20 +831,9 @@ Dragon Pixel fixes:
     for (let i = 0; i < screenshots.length; i++) {
       const result = await prepareImagePart(screenshots[i], `Screenshot ${i + 1}`);
       if ("error" in result) {
-        return Response.json({ error: result.error }, { status: 400 });
+        return jsonResponse({ error: result.error }, { status: 400 });
       }
       parts.push(result.part);
-    }
-
-        const global = await globalRatelimit.limit("global");
-    if (!global.success) {
-      return Response.json(
-        {
-          error:
-            "The analyzer is at daily capacity. Please try again tomorrow.",
-        },
-        { status: 429 }
-      );
     }
 
     const response = await ai.models.generateContent({
@@ -560,15 +843,26 @@ Dragon Pixel fixes:
 
     const rawText = response.text || "";
 
-    let observations: Observations;
+    let parsed: unknown;
 
     try {
-      observations = JSON.parse(cleanGeminiJson(rawText));
+      parsed = JSON.parse(cleanGeminiJson(rawText));
     } catch {
-      return Response.json(
+      return jsonResponse(
         {
           error:
             "The AI review returned an unreadable response. Please try again.",
+        },
+        { status: 502 }
+      );
+    }
+
+    const observations = sanitizeObservations(parsed);
+    if (!observations) {
+      return jsonResponse(
+        {
+          error:
+            "The AI review returned an unexpected structure. Please try again.",
         },
         { status: 502 }
       );
@@ -725,24 +1019,24 @@ ${observations.marketingRiskSummary || "No marketing confidence summary returned
 **${observations.finalCall || "No final call returned."}**
 `.trim();
 
-    return Response.json({
+    return jsonResponse({
       report,
       observations,
       calculated,
       verdict,
     });
-  } catch (err: any) {
+  } catch (err: unknown) {
     console.error("Analyze API error:", err);
 
     const msg =
-      typeof err?.message === "string" ? err.message : JSON.stringify(err);
+      err instanceof Error ? err.message : JSON.stringify(err);
 
     if (
       msg.includes("503") ||
       msg.includes("UNAVAILABLE") ||
       msg.includes("high demand")
     ) {
-      return Response.json(
+      return jsonResponse(
         {
           error:
             "The AI review service is temporarily busy. Please try again in a minute.",
@@ -751,9 +1045,9 @@ ${observations.marketingRiskSummary || "No marketing confidence summary returned
       );
     }
 
-    return Response.json(
-  { error: "Analysis failed. Please try again." },
-  { status: 500 }
-);
+    return jsonResponse(
+      { error: "Analysis failed. Please try again." },
+      { status: 500 }
+    );
   }
 }
