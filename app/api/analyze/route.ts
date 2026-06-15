@@ -240,6 +240,10 @@ function clampScore(score: number) {
   return Math.max(0, Math.min(100, Math.round(score)));
 }
 
+function roundToNearestFive(score: number) {
+  return Math.round(score / 5) * 5;
+}
+
 function sniffImageMime(buf: Buffer): string | null {
   if (
     buf.length >= 8 &&
@@ -628,12 +632,19 @@ function calculateDragonPixelScores(obs: Observations, reviewMode: ReviewMode) {
   ][]) {
     launchScore += (scores[key] / 100) * weight;
   }
-  launchScore = clampScore((launchScore / totalWeight) * 100);
+launchScore = roundToNearestFive(
+  clampScore((launchScore / totalWeight) * 100)
+);
 
-  const potentialAfterFixes = clampScore(
+const potentialAfterFixes = roundToNearestFive(
+  clampScore(
     launchScore +
-      Math.min(22, len(obs.dragonPixelFixes) * 4 + len(obs.whatHurtsConversion) * 3)
-  );
+      Math.min(
+        22,
+        len(obs.dragonPixelFixes) * 4 + len(obs.whatHurtsConversion) * 3
+      )
+  )
+);
 
   // Human-facing breakdown: a number where assessed, a status otherwise.
   const fmt = (n: number) => `${n}/100`;
@@ -776,16 +787,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const global = await globalRatelimit.limit("global");
-    if (!global.success) {
-      return jsonResponse(
-        {
-          error:
-            "The analyzer is at daily capacity. Please try again tomorrow.",
-        },
-        { status: 429 }
-      );
-    }
+
 
     const parts: Part[] = [
       {
@@ -916,10 +918,28 @@ Dragon Pixel fixes:
       parts.push(result.part);
     }
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts }],
-    });
+        const global = await globalRatelimit.limit("global");
+    if (!global.success) {
+      return jsonResponse(
+        {
+          error:
+            "The analyzer is at daily capacity. Please try again tomorrow.",
+        },
+        { status: 429 }
+      );
+    }
+
+const response = await ai.models.generateContent({
+  model: "gemini-2.5-flash",
+  contents: [{ role: "user", parts }],
+  config: {
+    temperature: 0,
+    topP: 0.1,
+    topK: 1,
+    candidateCount: 1,
+    responseMimeType: "application/json",
+  },
+});
 
     const rawText = response.text || "";
 
