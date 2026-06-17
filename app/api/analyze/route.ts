@@ -484,6 +484,71 @@ function dedupeList(items?: string[]): string[] {
   });
 }
 
+type ConversionRisk = {
+  assessed: boolean;
+  level: "Low" | "Medium" | "Medium-high" | "High" | "Needs screenshots";
+  position: number; // 0–100 marker for the risk meter
+  reason: string;
+};
+
+// Derived once here so the dashboard and the report can never disagree.
+// Clarity is the conversion driver; click pull only sets how many clicks are
+// at stake. A big pull-vs-clarity gap means more paid clicks land on an
+// unclear page, so it nudges the risk up.
+function computeConversionRisk(
+  clickPull: number,
+  gameplayClarity: number,
+  gameplayAssessed: boolean
+): ConversionRisk {
+  if (!gameplayAssessed) {
+    return {
+      assessed: false,
+      level: "Needs screenshots",
+      position: 50,
+      reason:
+        "Click pull is readable from the icon, but whether those clicks convert depends on gameplay clarity — add screenshots to gauge it.",
+    };
+  }
+
+  let level: ConversionRisk["level"];
+  if (gameplayClarity >= 75) level = "Low";
+  else if (gameplayClarity >= 62) level = "Medium";
+  else if (gameplayClarity >= 50) level = "Medium-high";
+  else level = "High";
+
+  const gap = clickPull - gameplayClarity;
+  if (gap >= 35 && (level === "Low" || level === "Medium")) {
+    level = level === "Low" ? "Medium" : "Medium-high";
+  }
+
+  const position = { Low: 18, Medium: 42, "Medium-high": 68, High: 88 }[level];
+
+  let reason: string;
+  if (level === "Low") {
+    reason = `Clarity (${gameplayClarity}) keeps up with pull (${clickPull}) — clicks should convert. Focus on raising visual excitement.`;
+  } else if (level === "Medium") {
+    reason = `Solid pull (${clickPull}) with workable clarity (${gameplayClarity}). Some clicks may not convert until the gameplay reads faster.`;
+  } else if (level === "Medium-high") {
+    reason = `Strong pull (${clickPull}) but mediocre clarity (${gameplayClarity}). Players click for the visuals and may leave before they understand the game — paid clicks risk not converting.`;
+  } else {
+    reason = `Clarity (${gameplayClarity}) is low. Even strong pull (${clickPull}) won't convert if players can't tell what the game is at a glance.`;
+  }
+
+  return { assessed: true, level, position, reason };
+}
+
+function computeStoreImpact(
+  risk: ConversionRisk
+): { headline: string; tone: "good" | "warn" | "bad" } {
+  if (!risk.assessed)
+    return { headline: "Add screenshots to gauge install risk", tone: "warn" };
+  if (risk.level === "Low")
+    return { headline: "Converting clicks well", tone: "good" };
+  if (risk.level === "Medium")
+    return { headline: "Some installs at risk", tone: "warn" };
+  return { headline: "Likely losing installs", tone: "bad" };
+}
+
 function calculateDragonPixelScores(obs: Observations, reviewMode: ReviewMode) {
   const text = collectFreeText(obs);
   const len = (arr?: string[]) => (Array.isArray(arr) ? arr.length : 0);
@@ -667,6 +732,16 @@ const potentialAfterFixes = roundToNearestFive(
     { key: "visualPolish", label: "Visual Polish", value: fmt(scores.visualPolish), assessed: true },
   ];
 
+  const conversionRisk = computeConversionRisk(
+    scores.clickPull,
+    scores.gameplayClarity,
+    gameplayAssessed
+  );
+  const storeImpact = computeStoreImpact(conversionRisk);
+  const biggestProblem =
+    dedupeList(obs.whatHurtsConversion)[0] || obs.finalCall || "";
+  const topFixes = dedupeList(obs.dragonPixelFixes).slice(0, 3);
+
   return {
     reviewMode,
     reviewModeLabel: REVIEW_MODE_LABEL[reviewMode],
@@ -675,6 +750,10 @@ const potentialAfterFixes = roundToNearestFive(
     breakdown,
     launchScore,
     potentialAfterFixes,
+    conversionRisk,
+    storeImpact,
+    biggestProblem,
+    topFixes,
   };
 }
 

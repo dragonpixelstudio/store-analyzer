@@ -106,3 +106,130 @@ body::after {
     animation: none;
   }
 }
+
+/* ---------- analyzing / loading scanner ---------- */
+
+/* scan line sweeping down the reticle window */
+@keyframes dpx-scanline {
+  0% {
+    transform: translateY(-130%);
+    opacity: 0;
+  }
+  12% {
+    opacity: 1;
+  }
+  88% {
+    opacity: 1;
+  }
+  100% {
+    transform: translateY(360%);
+    opacity: 0;
+  }
+}
+
+/* indeterminate progress shimmer */
+@keyframes dpx-bar {
+  0% {
+    transform: translateX(-120%);
+  }
+  100% {
+    transform: translateX(360%);
+  }
+}
+
+/* a row lights up, holds, then dims — staggered per row for a sweep */
+@keyframes dpx-activate {
+  0% {
+    opacity: 0.4;
+    border-color: var(--edge);
+  }
+  8% {
+    opacity: 1;
+    border-color: rgba(24, 224, 255, 0.45);
+  }
+  26% {
+    opacity: 1;
+    border-color: rgba(24, 224, 255, 0.45);
+  }
+  36% {
+    opacity: 0.4;
+    border-color: var(--edge);
+  }
+  100% {
+    opacity: 0.4;
+    border-color: var(--edge);
+  }
+}
+
+/* check pops in while its row is active */
+@keyframes dpx-check {
+  0%,
+  4% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+  10% {
+    opacity: 1;
+    transform: scale(1.15);
+  }
+  26% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  36%,
+  100% {
+    opacity: 0;
+    transform: scale(0.4);
+  }
+}
+
+@keyframes dpx-reticle {
+  0%,
+  100% {
+    opacity: 0.45;
+  }
+  50% {
+    opacity: 1;
+  }
+}
+
+.dpx-scanline {
+  animation: dpx-scanline 1.7s cubic-bezier(0.45, 0.05, 0.55, 0.95) infinite;
+}
+.dpx-bar {
+  animation: dpx-bar 1.3s ease-in-out infinite;
+}
+.dpx-activate {
+  animation: dpx-activate 3.2s ease-in-out infinite;
+}
+.dpx-check {
+  animation: dpx-check 3.2s ease-in-out infinite;
+}
+.dpx-reticle {
+  animation: dpx-reticle 1.7s ease-in-out infinite;
+}
+
+/* reduced motion: hold a calm, fully-legible static state */
+@media (prefers-reduced-motion: reduce) {
+  .dpx-scanline,
+  .dpx-bar,
+  .dpx-activate,
+  .dpx-check,
+  .dpx-reticle {
+    animation: none;
+  }
+  .dpx-activate {
+    opacity: 1;
+  }
+  .dpx-check {
+    opacity: 1;
+    transform: none;
+  }
+  .dpx-scanline {
+    opacity: 0.5;
+    transform: translateY(150%);
+  }
+  .dpx-reticle {
+    opacity: 0.8;
+  }
+}

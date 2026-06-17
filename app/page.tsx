@@ -22,6 +22,25 @@ type Asset = {
   overflow?: boolean;
 };
 
+type ScoreKey =
+  | "shelfReadability"
+  | "clickPull"
+  | "gameplayClarity"
+  | "emotionalSignal"
+  | "marketingConfidence"
+  | "visualPolish";
+
+type BreakdownRow = { key: string; label: string; value: string; assessed: boolean };
+
+type ConversionRisk = {
+  assessed: boolean;
+  level: string;
+  position: number;
+  reason: string;
+};
+
+type StoreImpact = { headline: string; tone: "good" | "warn" | "bad" };
+
 type AnalyzePayload = {
   error?: string;
   report?: string;
@@ -30,7 +49,15 @@ type AnalyzePayload = {
     launchScore?: number;
     potentialAfterFixes?: number;
     reviewModeLabel?: string;
+    reviewModeNote?: string;
+    scores?: Partial<Record<ScoreKey, number>>;
+    breakdown?: BreakdownRow[];
+    conversionRisk?: ConversionRisk;
+    storeImpact?: StoreImpact;
+    biggestProblem?: string;
+    topFixes?: string[];
   };
+  shelf?: { visible: string[]; lost: string[] };
 };
 
 /* ---------- response parsing (kept strict) ---------- */
@@ -43,6 +70,50 @@ function str(v: unknown) {
 function num(v: unknown) {
   return typeof v === "number" && Number.isFinite(v) ? v : undefined;
 }
+function strList(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+function parseScores(v: unknown): Partial<Record<ScoreKey, number>> | undefined {
+  if (!isRecord(v)) return undefined;
+  const keys: ScoreKey[] = [
+    "shelfReadability",
+    "clickPull",
+    "gameplayClarity",
+    "emotionalSignal",
+    "marketingConfidence",
+    "visualPolish",
+  ];
+  const out: Partial<Record<ScoreKey, number>> = {};
+  for (const k of keys) {
+    const n = num(v[k]);
+    if (n != null) out[k] = n;
+  }
+  return out;
+}
+function parseBreakdown(v: unknown): BreakdownRow[] | undefined {
+  if (!Array.isArray(v)) return undefined;
+  const rows = v.filter(isRecord).map((r) => ({
+    key: str(r.key) || "",
+    label: str(r.label) || "",
+    value: str(r.value) || "",
+    assessed: typeof r.assessed === "boolean" ? r.assessed : false,
+  }));
+  return rows.length ? rows : undefined;
+}
+function parseRisk(v: unknown): ConversionRisk | undefined {
+  if (!isRecord(v)) return undefined;
+  return {
+    assessed: typeof v.assessed === "boolean" ? v.assessed : false,
+    level: str(v.level) || "",
+    position: num(v.position) ?? 50,
+    reason: str(v.reason) || "",
+  };
+}
+function parseImpact(v: unknown): StoreImpact | undefined {
+  if (!isRecord(v)) return undefined;
+  const tone = v.tone === "good" || v.tone === "warn" || v.tone === "bad" ? v.tone : "warn";
+  return { headline: str(v.headline) || "", tone };
+}
 function parsePayload(raw: string): AnalyzePayload | null {
   let parsed: unknown;
   try {
@@ -51,20 +122,35 @@ function parsePayload(raw: string): AnalyzePayload | null {
     return null;
   }
   if (!isRecord(parsed)) return null;
-  const c = isRecord(parsed.calculated)
+  const rawCalc = isRecord(parsed.calculated) ? parsed.calculated : undefined;
+  const c = rawCalc
     ? {
-        launchScore: num(parsed.calculated.launchScore),
-        potentialAfterFixes: num(parsed.calculated.potentialAfterFixes),
-        reviewModeLabel: str(parsed.calculated.reviewModeLabel),
+        launchScore: num(rawCalc.launchScore),
+        potentialAfterFixes: num(rawCalc.potentialAfterFixes),
+        reviewModeLabel: str(rawCalc.reviewModeLabel),
+        reviewModeNote: str(rawCalc.reviewModeNote),
+        scores: parseScores(rawCalc.scores),
+        breakdown: parseBreakdown(rawCalc.breakdown),
+        conversionRisk: parseRisk(rawCalc.conversionRisk),
+        storeImpact: parseImpact(rawCalc.storeImpact),
+        biggestProblem: str(rawCalc.biggestProblem),
+        topFixes: strList(rawCalc.topFixes),
       }
+    : undefined;
+  const obs = isRecord(parsed.observations) ? parsed.observations : undefined;
+  const shelfObs = obs && isRecord(obs.shelfTest) ? obs.shelfTest : undefined;
+  const shelf = shelfObs
+    ? { visible: strList(shelfObs.visibleElements), lost: strList(shelfObs.lostElements) }
     : undefined;
   return {
     error: str(parsed.error),
     report: str(parsed.report),
     verdict: str(parsed.verdict),
     calculated: c,
+    shelf,
   };
 }
+
 
 /* ---------- helpers ---------- */
 function formatSize(bytes: number) {
@@ -110,6 +196,121 @@ function useCountUp(target: number | null, duration = 900) {
   return val;
 }
 
+/* ---------- review dimensions (icons defined once, reused by the idle
+   feature row and the loading scanner so the set never drifts) ---------- */
+const REVIEW_DIMENSIONS: { title: string; desc: string; icon: React.ReactNode }[] = [
+  {
+    title: "Shelf test",
+    desc: "Survives at 32px?",
+    icon: (
+      <svg className="h-[18px] w-[18px] flex-none text-[var(--cyan)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="11" cy="11" r="7" />
+        <path d="m20 20-3.5-3.5" />
+      </svg>
+    ),
+  },
+  {
+    title: "Click pull",
+    desc: "Reason to tap",
+    icon: (
+      <svg className="h-[18px] w-[18px] flex-none text-[var(--cyan)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="m13 2-9 12h7l-2 8 9-12h-7z" />
+      </svg>
+    ),
+  },
+  {
+    title: "Gameplay clarity",
+    desc: "Read in 3 seconds",
+    icon: (
+      <svg className="h-[18px] w-[18px] flex-none text-[var(--cyan)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <circle cx="12" cy="12" r="9" />
+        <path d="M12 8v4l3 2" />
+      </svg>
+    ),
+  },
+  {
+    title: "Priority fixes",
+    desc: "What to do first",
+    icon: (
+      <svg className="h-[18px] w-[18px] flex-none text-[var(--cyan)]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+        <path d="M3 6h18M3 12h18M3 18h12" />
+      </svg>
+    ),
+  },
+];
+
+/* ---------- 32px shelf preview: real uploaded asset, downscaled on canvas ---------- */
+function ShelfPreview({
+  asset,
+  shelf,
+}: {
+  asset: Asset;
+  shelf: { visible: string[]; lost: string[] } | null;
+}) {
+  const fullRef = useRef<HTMLCanvasElement>(null);
+  const tinyRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const img = new window.Image();
+    img.onload = () => {
+      const full = fullRef.current;
+      if (full) {
+        const fw = 150;
+        const fh = Math.max(1, Math.round((fw * img.naturalHeight) / img.naturalWidth));
+        full.width = fw;
+        full.height = fh;
+        full.getContext("2d")?.drawImage(img, 0, 0, fw, fh);
+      }
+      const tiny = tinyRef.current;
+      if (tiny) {
+        tiny.width = 32;
+        tiny.height = 32;
+        const ctx = tiny.getContext("2d");
+        if (ctx) {
+          ctx.fillStyle = "#0a0612";
+          ctx.fillRect(0, 0, 32, 32);
+          const s = Math.min(32 / img.naturalWidth, 32 / img.naturalHeight);
+          const dw = img.naturalWidth * s;
+          const dh = img.naturalHeight * s;
+          ctx.drawImage(img, (32 - dw) / 2, (32 - dh) / 2, dw, dh);
+        }
+      }
+    };
+    img.src = asset.url;
+  }, [asset.url]);
+
+  const visible = (shelf?.visible ?? []).slice(0, 3);
+  const lost = (shelf?.lost ?? []).slice(0, 3);
+
+  return (
+    <div className="flex flex-wrap items-center gap-5">
+      <div className="text-center">
+        <canvas ref={fullRef} className="rounded-lg border border-[var(--edge)] bg-black" style={{ width: 150, height: "auto" }} />
+        <div className="font-brand mt-1.5 text-[9px] font-bold uppercase tracking-[.12em] text-[var(--faint)]">Full size</div>
+      </div>
+      <div className="text-center">
+        <canvas ref={tinyRef} className="rounded-md border border-[var(--edge)] bg-black" style={{ width: 32, height: 32, imageRendering: "auto" }} />
+        <div className="font-brand mt-1.5 text-[9px] font-bold uppercase tracking-[.12em] text-[var(--faint)]">At 32px</div>
+      </div>
+      <div className="min-w-[150px] flex-1 text-[13.5px]">
+        {visible.map((v) => (
+          <div key={`v-${v}`} className="mb-1.5 flex items-center gap-2 text-[var(--muted)]">
+            <span className="font-brand flex-none font-black text-[var(--green)]">✓</span> {v}
+          </div>
+        ))}
+        {lost.map((l) => (
+          <div key={`l-${l}`} className="mb-1.5 flex items-center gap-2 text-[#c3a0a8]">
+            <span className="font-brand flex-none font-black text-[var(--magenta)]">✗</span> {l}
+          </div>
+        ))}
+        {visible.length === 0 && lost.length === 0 && (
+          <div className="text-[var(--faint)]">If you can&apos;t tell what the game is at this size, neither can a shopper scrolling past.</div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 export default function Home() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(false);
@@ -118,6 +319,13 @@ export default function Home() {
   const [potential, setPotential] = useState<number | null>(null);
   const [verdict, setVerdict] = useState("");
   const [mode, setMode] = useState("");
+  const [scores, setScores] = useState<Partial<Record<ScoreKey, number>> | null>(null);
+  const [breakdown, setBreakdown] = useState<BreakdownRow[]>([]);
+  const [risk, setRisk] = useState<ConversionRisk | null>(null);
+  const [impact, setImpact] = useState<StoreImpact | null>(null);
+  const [biggestProblem, setBiggestProblem] = useState("");
+  const [topFixes, setTopFixes] = useState<string[]>([]);
+  const [shelf, setShelf] = useState<{ visible: string[]; lost: string[] } | null>(null);
   const [error, setError] = useState("");
   const [dragOver, setDragOver] = useState(false);
   const [email, setEmail] = useState("");
@@ -246,6 +454,13 @@ export default function Home() {
     setPotential(null);
     setVerdict("");
     setMode("");
+    setScores(null);
+    setBreakdown([]);
+    setRisk(null);
+    setImpact(null);
+    setBiggestProblem("");
+    setTopFixes([]);
+    setShelf(null);
     setHelpStatus("");
 
     try {
@@ -267,6 +482,13 @@ export default function Home() {
       setPotential(data.calculated?.potentialAfterFixes ?? null);
       setVerdict(data.verdict || "");
       setMode(data.calculated?.reviewModeLabel || "");
+      setScores(data.calculated?.scores ?? null);
+      setBreakdown(data.calculated?.breakdown ?? []);
+      setRisk(data.calculated?.conversionRisk ?? null);
+      setImpact(data.calculated?.storeImpact ?? null);
+      setBiggestProblem(data.calculated?.biggestProblem ?? "");
+      setTopFixes(data.calculated?.topFixes ?? []);
+      setShelf(data.shelf ?? null);
     } catch {
       setError("Could not reach the analyzer. Check your connection and try again.");
     } finally {
@@ -295,6 +517,23 @@ export default function Home() {
 
   const hasUsable = assets.some((a) => !a.error && !a.overflow);
   const hasResult = Boolean(report) && score != null;
+
+  // worst-first priority order; assessed categories first, unassessed last
+  const orderedBars = [...breakdown].sort((a, b) => {
+    if (a.assessed !== b.assessed) return a.assessed ? -1 : 1;
+    const av = scores?.[a.key as ScoreKey] ?? 999;
+    const bv = scores?.[b.key as ScoreKey] ?? 999;
+    return av - bv;
+  });
+  const scoreColor = (v: number) =>
+    v >= 80 ? "var(--green)" : v >= 50 ? "var(--gold)" : "var(--magenta)";
+  // the real asset to shrink for the 32px test: icon if present, else first screenshot
+  const previewAsset =
+    assets.find((a) => a.role === "icon" && !a.error) ||
+    assets.find((a) => a.role === "screenshot" && !a.error && !a.overflow) ||
+    null;
+  const impactTone =
+    impact?.tone === "good" ? "var(--green)" : impact?.tone === "bad" ? "var(--magenta)" : "var(--gold)";
 
   return (
     <main className="relative z-[1] mx-auto w-[min(1060px,calc(100%-44px))] pb-16">
@@ -461,20 +700,52 @@ export default function Home() {
     }}
   >
     {loading ? (
-<div className="flex min-h-[300px] flex-col items-center justify-center px-4 py-8 text-center">
-  <div className="relative mb-10 h-28 w-28">
-    <div className="absolute inset-0 rounded-full border border-cyan-300/25 bg-cyan-300/5 shadow-[0_0_90px_rgba(24,224,255,0.35)]" />
-    <div className="absolute inset-3 animate-ping rounded-full border border-cyan-300/35 bg-cyan-300/10 shadow-[0_0_70px_rgba(24,224,255,0.45)]" />
-    <div className="absolute inset-7 animate-pulse rounded-full bg-cyan-300 shadow-[0_0_60px_rgba(24,224,255,0.9)]" />
+<div className="flex min-h-[300px] flex-col items-center justify-center px-4 py-9 text-center">
+  {/* scanner window — sweeping scan line over the brand grid, reticle corners */}
+  <div className="relative mb-7 h-28 w-28">
+    <div className="absolute inset-0 overflow-hidden rounded-2xl border border-[rgba(24,224,255,.28)] bg-[rgba(24,224,255,.04)] shadow-[0_0_60px_rgba(24,224,255,.28)]">
+      <div
+        className="absolute inset-0"
+        style={{
+          background:
+            "radial-gradient(circle at 30% 30%,rgba(24,224,255,.22),transparent 55%),radial-gradient(circle at 72% 74%,rgba(255,61,180,.2),transparent 55%)",
+        }}
+      />
+      <div
+        className="absolute inset-0 opacity-40"
+        style={{
+          backgroundImage:
+            "linear-gradient(rgba(255,255,255,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.08) 1px,transparent 1px)",
+          backgroundSize: "14px 14px",
+        }}
+      />
+      <div
+        className="dpx-scanline absolute inset-x-0 top-0 h-8"
+        style={{
+          background: "linear-gradient(180deg,transparent,rgba(24,224,255,.55),transparent)",
+          boxShadow: "0 0 20px rgba(24,224,255,.6)",
+        }}
+      />
+    </div>
+    <span className="dpx-reticle absolute -left-1 -top-1 h-4 w-4 border-l-2 border-t-2 border-[var(--cyan)]" />
+    <span className="dpx-reticle absolute -right-1 -top-1 h-4 w-4 border-r-2 border-t-2 border-[var(--cyan)]" />
+    <span className="dpx-reticle absolute -bottom-1 -left-1 h-4 w-4 border-b-2 border-l-2 border-[var(--cyan)]" />
+    <span className="dpx-reticle absolute -bottom-1 -right-1 h-4 w-4 border-b-2 border-r-2 border-[var(--cyan)]" />
   </div>
 
-  <h2 className="font-brand text-2xl font-black">
-    Running Dragon Pixel review
-  </h2>
+  <h2 className="font-brand text-2xl font-black">Running Dragon Pixel review</h2>
 
-  <p className="mt-4 max-w-md text-sm font-semibold leading-7 text-[var(--muted)]">
-    Checking shelf readability, click pull, gameplay clarity, and marketing confidence.
+  <p className="mt-3 max-w-xs text-sm font-semibold leading-6 text-[var(--muted)]">
+    Scanning shelf readability, click pull, gameplay clarity, and marketing confidence.
   </p>
+
+  {/* indeterminate progress shimmer */}
+  <div className="relative mt-5 h-1 w-48 overflow-hidden rounded-full bg-white/10">
+    <div
+      className="dpx-bar absolute inset-y-0 w-1/3 rounded-full"
+      style={{ background: "linear-gradient(90deg,transparent,var(--cyan),transparent)" }}
+    />
+  </div>
 </div>
     ) : (
       <>
@@ -521,57 +792,211 @@ export default function Home() {
             </b>
           </span>
         </div>
+
+        {hasResult && biggestProblem && (
+          <div className="mt-3">
+            <div className="font-brand text-[9.5px] font-bold uppercase tracking-[.18em] text-[var(--faint)]">
+              Biggest problem
+            </div>
+            <div className="mt-1 text-[15px] font-bold leading-snug">{biggestProblem}</div>
+          </div>
+        )}
       </>
     )}
   </div>
 
-  {!hasResult && !loading && (
-    <div className="mt-4 grid grid-cols-2 gap-2.5">
-      {[
-        ["Shelf test", "Survives at 32px?"],
-        ["Click pull", "Reason to tap"],
-        ["Gameplay clarity", "Read in 3 seconds"],
-        ["Priority fixes", "What to do first"],
-      ].map(([t, d]) => (
-        <div
-          key={t}
-          className="rounded-xl border border-[var(--edge)] bg-white/[.025] px-3.5 py-2.5"
-        >
-          <span className="block text-[13.5px] font-bold">{t}</span>
+{!loading && (
+  <div className="mt-4 grid grid-cols-2 gap-2.5">
+    {REVIEW_DIMENSIONS.map((item) => (
+      <div
+        key={item.title}
+        className="flex items-center gap-2.5 rounded-xl border border-[var(--edge)] bg-white/[.025] px-3.5 py-2.5 transition hover:-translate-y-0.5 hover:border-[rgba(24,224,255,.4)]"
+      >
+        {item.icon}
+        <span>
+          <span className="block text-[13.5px] font-bold">{item.title}</span>
           <span className="block text-[11.5px] font-semibold text-[var(--faint)]">
-            {d}
+            {item.desc}
           </span>
-        </div>
-      ))}
-    </div>
-  )}
+        </span>
+      </div>
+    ))}
+  </div>
+)}
 </aside>
       </div>
 
-      {/* full report */}
+      {/* result dashboard */}
       {hasResult && (
-        <section className="mt-6 rounded-3xl border border-[var(--edge)] p-6 shadow-[0_22px_70px_rgba(0,0,0,.4)]"
-          style={{ background: "linear-gradient(160deg,rgba(18,18,34,.96),rgba(7,8,18,.96))" }}>
-          <div className="report-prose max-w-none text-[var(--foreground)]">
-            <ReactMarkdown
-              components={{
-                h1: ({ children }) => <h1 className="font-brand mb-3 text-2xl font-black">{children}</h1>,
-                h2: ({ children }) => <h2 className="font-brand mb-2 mt-6 text-lg font-bold text-[var(--cyan)]">{children}</h2>,
-                h3: ({ children }) => <h3 className="font-brand mb-1.5 mt-4 text-[15px] font-bold text-[var(--muted)]">{children}</h3>,
-                p: ({ children }) => <p className="mb-3 text-[15px] leading-relaxed text-[var(--muted)]">{children}</p>,
-                ul: ({ children }) => <ul className="mb-3 ml-1 list-disc space-y-1 pl-4 text-[15px] text-[var(--muted)]">{children}</ul>,
-                ol: ({ children }) => <ol className="mb-3 ml-1 list-decimal space-y-1 pl-4 text-[15px] text-[var(--muted)]">{children}</ol>,
-                strong: ({ children }) => <strong className="font-bold text-[var(--foreground)]">{children}</strong>,
-                em: ({ children }) => <em className="not-italic text-[var(--cyan)]">{children}</em>,
-                hr: () => <hr className="my-5 border-[var(--edge)]" />,
+        <section className="mt-6 flex flex-col gap-4">
+          {/* STORE IMPACT — the "why care" outcome line */}
+          {impact && (
+            <div
+              className="rounded-3xl border p-6 shadow-[0_22px_70px_rgba(0,0,0,.4)]"
+              style={{
+                borderColor:
+                  impact.tone === "bad"
+                    ? "rgba(255,61,180,.34)"
+                    : impact.tone === "good"
+                    ? "rgba(105,255,0,.3)"
+                    : "rgba(255,194,61,.3)",
+                background: "linear-gradient(160deg,rgba(18,18,34,.96),rgba(7,8,18,.96))",
               }}
             >
-              {report}
-            </ReactMarkdown>
-          </div>
+              <div className="font-brand text-[11px] font-bold uppercase tracking-[.2em]" style={{ color: impactTone }}>
+                Store impact
+              </div>
+              <div className="font-brand mt-2 text-[22px] font-black" style={{ color: impactTone }}>
+                {impact.headline}
+              </div>
+              {risk?.reason && (
+                <p className="mt-2 text-[15px] font-semibold text-[var(--muted)]">{risk.reason}</p>
+              )}
+              {risk && (
+                <div className="mt-4 flex items-center gap-3">
+                  <span className="font-brand text-[9px] font-bold uppercase tracking-[.14em] text-[var(--faint)]">
+                    Click → convert
+                  </span>
+                  <div className="relative h-2 flex-1 overflow-hidden rounded-full border border-[var(--edge)] bg-black/40">
+                    <span
+                      className="absolute top-1/2 h-3.5 w-[3px] -translate-y-1/2 rounded-sm bg-white shadow-[0_0_8px_rgba(255,255,255,.7)]"
+                      style={{ left: `${Math.max(2, Math.min(98, risk.position))}%` }}
+                    />
+                  </div>
+                  <span className="font-brand text-[12px] font-black" style={{ color: impactTone }}>
+                    {risk.level}
+                  </span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* TOP 3 FIXES — action-first */}
+          {topFixes.length > 0 && (
+            <div
+              className="rounded-3xl border-[1.5px] p-6"
+              style={{
+                borderColor: "rgba(105,255,0,.4)",
+                background:
+                  "radial-gradient(600px 260px at 50% -20%,rgba(105,255,0,.08),transparent 60%),linear-gradient(160deg,rgba(18,22,18,.96),rgba(7,8,12,.96))",
+                boxShadow: "0 18px 50px -28px rgba(105,255,0,.4)",
+              }}
+            >
+              <div className="font-brand text-[11px] font-bold uppercase tracking-[.2em] text-[var(--green)]">
+                Your move
+              </div>
+              <h2 className="font-brand mt-1 text-[22px] font-black">Do these first</h2>
+              <p className="mb-5 mt-1.5 text-sm font-semibold text-[var(--muted)]">
+                Ranked priority — start at the top.
+              </p>
+              <div className="flex flex-col gap-3">
+                {topFixes.map((fix, i) => (
+                  <div
+                    key={`${i}-${fix.slice(0, 24)}`}
+                    className="flex gap-4 rounded-2xl border border-[var(--edge)] bg-white/[.03] p-4"
+                  >
+                    <span className="font-brand text-[26px] font-black leading-none text-[var(--green)] opacity-60">
+                      {i + 1}
+                    </span>
+                    <span className="flex-1 text-[15px] font-semibold leading-snug">{fix}</span>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+
+          {/* CATEGORY BARS — worst first */}
+          {orderedBars.length > 0 && (
+            <div
+              className="rounded-3xl border border-[var(--edge)] p-6"
+              style={{ background: "linear-gradient(160deg,rgba(18,18,34,.96),rgba(7,8,18,.96))" }}
+            >
+              <div className="mb-4 font-brand text-[11px] font-bold uppercase tracking-[.2em] text-[var(--muted)]">
+                Weakest first
+              </div>
+              <div className="flex flex-col gap-3">
+                {orderedBars.map((row, i) => {
+                  const v = scores?.[row.key as ScoreKey];
+                  return (
+                    <div key={row.key} className="flex items-center gap-3">
+                      <span className="font-brand w-4 flex-none text-[11px] font-black text-[var(--faint)]">
+                        {i + 1}
+                      </span>
+                      <span className="w-[122px] flex-none text-[13px] font-semibold text-[var(--muted)]">
+                        {row.label}
+                      </span>
+                      <div className="h-3.5 flex-1 overflow-hidden rounded-md border border-[var(--edge)] bg-black/40">
+                        {row.assessed && v != null ? (
+                          <div
+                            className="h-full rounded-[3px] transition-[width] duration-700"
+                            style={{ width: `${v}%`, background: scoreColor(v) }}
+                          />
+                        ) : (
+                          <div
+                            className="h-full w-full opacity-70"
+                            style={{
+                              background:
+                                "repeating-linear-gradient(135deg,#262b40,#262b40 5px,#1a1e30 5px,#1a1e30 10px)",
+                            }}
+                          />
+                        )}
+                      </div>
+                      <span
+                        className="font-brand w-[42px] flex-none text-right text-[13px] font-bold"
+                        style={{ color: row.assessed && v != null ? scoreColor(v) : "var(--faint)" }}
+                      >
+                        {row.assessed && v != null ? v : "—"}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* 32px SHELF PREVIEW — real uploaded asset */}
+          {previewAsset && (
+            <div
+              className="rounded-3xl border border-[var(--edge)] p-6"
+              style={{ background: "linear-gradient(160deg,rgba(18,18,34,.96),rgba(7,8,18,.96))" }}
+            >
+              <div className="mb-4 font-brand text-[11px] font-bold uppercase tracking-[.2em] text-[var(--muted)]">
+                Shelf test · 32px
+              </div>
+              <ShelfPreview asset={previewAsset} shelf={shelf} />
+              <p className="mt-4 text-[13px] font-semibold italic text-[var(--faint)]">
+                Your actual asset, shrunk to store-icon size. Whatever survives here is your real first impression.
+              </p>
+            </div>
+          )}
+
+          {/* ADVANCED — full written report, collapsed */}
+          <details className="rounded-3xl border border-[var(--edge)]"
+            style={{ background: "linear-gradient(160deg,rgba(18,18,34,.96),rgba(7,8,18,.96))" }}>
+            <summary className="font-brand cursor-pointer list-none px-6 py-5 text-[12px] font-bold uppercase tracking-[.16em] text-[var(--muted)]">
+              Full written report
+            </summary>
+            <div className="report-prose max-w-none px-6 pb-6 text-[var(--foreground)]">
+              <ReactMarkdown
+                components={{
+                  h1: ({ children }) => <h1 className="font-brand mb-3 text-2xl font-black">{children}</h1>,
+                  h2: ({ children }) => <h2 className="font-brand mb-2 mt-6 text-lg font-bold text-[var(--cyan)]">{children}</h2>,
+                  h3: ({ children }) => <h3 className="font-brand mb-1.5 mt-4 text-[15px] font-bold text-[var(--muted)]">{children}</h3>,
+                  p: ({ children }) => <p className="mb-3 text-[15px] leading-relaxed text-[var(--muted)]">{children}</p>,
+                  ul: ({ children }) => <ul className="mb-3 ml-1 list-disc space-y-1 pl-4 text-[15px] text-[var(--muted)]">{children}</ul>,
+                  ol: ({ children }) => <ol className="mb-3 ml-1 list-decimal space-y-1 pl-4 text-[15px] text-[var(--muted)]">{children}</ol>,
+                  strong: ({ children }) => <strong className="font-bold text-[var(--foreground)]">{children}</strong>,
+                  em: ({ children }) => <em className="not-italic text-[var(--cyan)]">{children}</em>,
+                  hr: () => <hr className="my-5 border-[var(--edge)]" />,
+                }}
+              >
+                {report}
+              </ReactMarkdown>
+            </div>
+          </details>
 
           {/* lead capture */}
-          <div className="mt-6 rounded-2xl border border-[rgba(24,224,255,.28)] bg-[rgba(24,224,255,.05)] p-5">
+          <div className="rounded-2xl border border-[rgba(24,224,255,.28)] bg-[rgba(24,224,255,.05)] p-5">
             <h3 className="font-brand text-base font-bold">Want Dragon Pixel to fix the weak spots?</h3>
             <p className="mb-3 mt-1 text-sm font-semibold text-[var(--muted)]">
               Send this report with your email and we&apos;ll quote a focused icon, screenshot, or store-page polish pass.
