@@ -2,7 +2,6 @@
 
 import Image from "next/image";
 import { useCallback, useEffect, useRef, useState } from "react";
-import ReactMarkdown from "react-markdown";
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2 MB
 const MAX_SCREENSHOTS = 3;
@@ -66,7 +65,6 @@ type EmotionReads = { present: string[]; missing: string[] };
 
 type AnalyzePayload = {
   error?: string;
-  report?: string;
   verdict?: string;
   calculated?: {
     launchScore?: number;
@@ -225,7 +223,6 @@ function parsePayload(raw: string): AnalyzePayload | null {
     : undefined;
   return {
     error: str(parsed.error),
-    report: str(parsed.report),
     verdict: str(parsed.verdict),
     calculated: c,
     shelf,
@@ -400,7 +397,7 @@ function ShelfPreview({
   );
 }
 
-/* ---------- small visual primitives for the report sections ---------- */
+/* ---------- small visual primitives for the result sections ---------- */
 function ChipGroup({
   label,
   items,
@@ -450,37 +447,61 @@ function ChecklistCols({
   goodLabel: string;
   badLabel: string;
 }) {
+  const Item = ({ t, ok }: { t: string; ok: boolean }) => (
+    <div
+      className="mb-1.5 flex items-start gap-2 text-[13.5px] leading-snug"
+      style={{ color: ok ? "var(--muted)" : "#c8aab2", breakInside: "avoid" }}
+    >
+      <span className="font-brand mt-px flex-none font-black" style={{ color: ok ? "var(--green)" : "var(--magenta)" }}>
+        {ok ? "✓" : "✗"}
+      </span>
+      <span>{t}</span>
+    </div>
+  );
+
+  const hasGood = good.length > 0;
+  const hasBad = bad.length > 0;
+
+  // one-sided → flow full width in balanced columns, no reserved empty half
+  if (hasGood !== hasBad) {
+    const items = hasGood ? good : bad;
+    const label = hasGood ? goodLabel : badLabel;
+    const ok = hasGood;
+    return (
+      <div>
+        <div
+          className="font-brand mb-2 text-[10px] font-bold uppercase tracking-[.14em]"
+          style={{ color: ok ? "var(--green)" : "var(--magenta)" }}
+        >
+          {label}
+        </div>
+        <div className="gap-x-8 sm:columns-2">
+          {items.map((t, i) => (
+            <Item key={i} t={t} ok={ok} />
+          ))}
+        </div>
+      </div>
+    );
+  }
+
+  // both sides present → paired two columns
   return (
     <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
       <div>
         <div className="font-brand mb-2 text-[10px] font-bold uppercase tracking-[.14em] text-[var(--green)]">
           {goodLabel}
         </div>
-        {good.length ? (
-          good.map((t, i) => (
-            <div key={`g-${i}`} className="mb-1.5 flex items-start gap-2 text-[13.5px] text-[var(--muted)]">
-              <span className="font-brand mt-px flex-none font-black text-[var(--green)]">✓</span>
-              <span>{t}</span>
-            </div>
-          ))
-        ) : (
-          <div className="text-[13px] text-[var(--faint)]">—</div>
-        )}
+        {good.map((t, i) => (
+          <Item key={`g-${i}`} t={t} ok />
+        ))}
       </div>
       <div>
         <div className="font-brand mb-2 text-[10px] font-bold uppercase tracking-[.14em] text-[var(--magenta)]">
           {badLabel}
         </div>
-        {bad.length ? (
-          bad.map((t, i) => (
-            <div key={`b-${i}`} className="mb-1.5 flex items-start gap-2 text-[13.5px] text-[#c3a0a8]">
-              <span className="font-brand mt-px flex-none font-black text-[var(--magenta)]">✗</span>
-              <span>{t}</span>
-            </div>
-          ))
-        ) : (
-          <div className="text-[13px] text-[var(--faint)]">—</div>
-        )}
+        {bad.map((t, i) => (
+          <Item key={`b-${i}`} t={t} ok={false} />
+        ))}
       </div>
     </div>
   );
@@ -579,7 +600,6 @@ function AnalyzingPanel({ noun }: { noun: string }) {
 export default function Home() {
   const [assets, setAssets] = useState<Asset[]>([]);
   const [loading, setLoading] = useState(false);
-  const [report, setReport] = useState("");
   const [score, setScore] = useState<number | null>(null);
   const [potential, setPotential] = useState<number | null>(null);
   const [verdict, setVerdict] = useState("");
@@ -733,7 +753,6 @@ export default function Home() {
 
     setLoading(true);
     setError("");
-    setReport("");
     setScore(null);
     setPotential(null);
     setVerdict("");
@@ -769,7 +788,6 @@ export default function Home() {
         return;
       }
 
-      setReport(data.report || "No report returned.");
       setScore(data.calculated?.launchScore ?? null);
       setPotential(data.calculated?.potentialAfterFixes ?? null);
       setVerdict(data.verdict || "");
@@ -804,10 +822,18 @@ export default function Home() {
     }
     setHelpStatus("Sending…");
     try {
+      const summary = [
+        `Launch score: ${score ?? "—"}/100 (${decision?.label || verdict})`,
+        summaryLine && `Reason: ${summaryLine}`,
+        topFixes.length > 0 &&
+          `Top fixes:\n${topFixes.map((f, i) => `${i + 1}. ${f.action}${f.change ? ` — ${f.change}` : ""}`).join("\n")}`,
+      ]
+        .filter(Boolean)
+        .join("\n");
       const res = await fetch(FORMSPREE, {
         method: "POST",
         headers: { Accept: "application/json" },
-        body: JSON.stringify({ email, verdict, report }),
+        body: JSON.stringify({ email, verdict, summary }),
       });
       setHelpStatus(res.ok ? "Sent — we'll be in touch." : "Something went wrong. Try again.");
     } catch {
@@ -819,7 +845,6 @@ export default function Home() {
   function reset() {
     assets.forEach((a) => URL.revokeObjectURL(a.url));
     setAssets([]);
-    setReport("");
     setScore(null);
     setPotential(null);
     setVerdict("");
@@ -845,7 +870,7 @@ export default function Home() {
   }
 
   const hasUsable = assets.some((a) => !a.error && !a.overflow);
-  const hasResult = Boolean(report) && score != null;
+  const hasResult = score != null;
 
   // worst-first priority order; assessed categories first, unassessed last
   const orderedBars = [...breakdown].sort((a, b) => {
@@ -914,7 +939,9 @@ export default function Home() {
               Free store audit
             </span>
             <h2 className="font-brand text-[22px] font-bold">Upload store assets</h2>
-            <p className="mt-3 max-w-md text-sm font-semibold text-[var(--muted)]"> </p>
+            <p className="mb-4 mt-1.5 text-[15px] font-semibold text-[var(--muted)]">
+              Sorted automatically — override the type on any file.
+            </p>
 
             {/* dropzone */}
             <label
@@ -1185,7 +1212,7 @@ export default function Home() {
           {/* slim re-upload bar */}
           <button
             onClick={reset}
-            className="group flex items-center justify-between rounded-2xl border border-[var(--edge)] bg-white/[.03] px-5 py-3 text-left transition hover:border-[rgba(24,224,255,.4)]"
+            className="dpx-reupload group flex items-center justify-between rounded-2xl border border-[var(--edge)] bg-white/[.03] px-5 py-3 text-left transition hover:border-[rgba(24,224,255,.4)]"
           >
             <span className="font-brand text-[12px] font-bold uppercase tracking-[.14em] text-[var(--muted)] group-hover:text-[var(--cyan)]">
               ↻ Analyze another asset
@@ -1360,7 +1387,7 @@ export default function Home() {
                   Advanced analysis
                 </span>
                 <span className="block text-[12.5px] font-semibold text-[var(--faint)]">
-                  Full score breakdown, signal detail, and the written report
+                  Full score breakdown and signal detail
                 </span>
               </span>
               <span className="dpx-chev flex h-8 w-8 flex-none items-center justify-center rounded-full border border-[var(--edge)] text-[var(--cyan)] transition group-hover:border-[rgba(24,224,255,.5)] group-hover:bg-[rgba(24,224,255,.08)]">
@@ -1464,30 +1491,6 @@ export default function Home() {
                   />
                 </div>
               )}
-
-              {/* full written report */}
-              <div>
-                <div className="mb-3 font-brand text-[11px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">
-                  Full written report
-                </div>
-                <div className="report-prose max-w-none text-[var(--foreground)]">
-                  <ReactMarkdown
-                    components={{
-                      h1: ({ children }) => <h1 className="font-brand mb-3 text-2xl font-black">{children}</h1>,
-                      h2: ({ children }) => <h2 className="font-brand mb-2 mt-6 text-lg font-bold text-[var(--cyan)]">{children}</h2>,
-                      h3: ({ children }) => <h3 className="font-brand mb-1.5 mt-4 text-[15px] font-bold text-[var(--muted)]">{children}</h3>,
-                      p: ({ children }) => <p className="mb-3 text-[15px] leading-relaxed text-[var(--muted)]">{children}</p>,
-                      ul: ({ children }) => <ul className="mb-3 ml-1 list-disc space-y-1 pl-4 text-[15px] text-[var(--muted)]">{children}</ul>,
-                      ol: ({ children }) => <ol className="mb-3 ml-1 list-decimal space-y-1 pl-4 text-[15px] text-[var(--muted)]">{children}</ol>,
-                      strong: ({ children }) => <strong className="font-bold text-[var(--foreground)]">{children}</strong>,
-                      em: ({ children }) => <em className="not-italic text-[var(--cyan)]">{children}</em>,
-                      hr: () => <hr className="my-5 border-[var(--edge)]" />,
-                    }}
-                  >
-                    {report}
-                  </ReactMarkdown>
-                </div>
-              </div>
             </div>
           </details>
 
@@ -1495,7 +1498,7 @@ export default function Home() {
           <div className="rounded-2xl border border-[rgba(24,224,255,.28)] bg-[rgba(24,224,255,.05)] p-5">
             <h3 className="font-brand text-base font-bold">Want Dragon Pixel to fix the weak spots?</h3>
             <p className="mb-3 mt-1 text-sm font-semibold text-[var(--muted)]">
-              Send this report with your email and we&apos;ll quote a focused icon, screenshot, or store-page polish pass.
+              Send us your email with this review and we&apos;ll quote a focused icon, screenshot, or store-page polish pass.
             </p>
             <div className="flex flex-wrap gap-2.5">
               <input
@@ -1518,37 +1521,84 @@ export default function Home() {
       )}
 
       {/* footer */}
-<footer className="mt-12 text-center">
-<div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 rounded-3xl border border-white/10 bg-white/[0.02] px-6 py-6 shadow-[0_18px_60px_rgba(0,0,0,.2)] md:grid-cols-2">
-  <div className="text-center">
-    <p className="font-brand text-xs uppercase tracking-[0.2em] text-[var(--cyan)]">
-      Scoring Engine
-    </p>
-    <p className="mt-2 text-sm text-[var(--muted)]">
-      AI reads the visuals. Dragon Pixel scores clarity, click pull, polish, and conversion risk.
-    </p>
-  </div>
+      <footer className="mt-16">
+        <div className="rounded-3xl border border-white/10 bg-white/[0.02] px-7 py-9 shadow-[0_18px_60px_rgba(0,0,0,.25)]">
+          <div className="grid grid-cols-1 gap-9 md:grid-cols-[1.5fr_1fr_1.6fr]">
+            {/* brand */}
+            <div>
+              <Image
+                src="/logo.png"
+                alt="Dragon Pixel Studio"
+                width={240}
+                height={52}
+                className="h-9 w-auto opacity-90"
+              />
+              <p className="mt-3 max-w-xs text-[13.5px] leading-6 text-[var(--muted)]">
+                Dragon Pixel Studio builds premium mobile and Steam games. Store Analyzer is our free
+                pre-launch conversion review.
+              </p>
+              <p className="mt-3 font-brand text-[11px] font-bold uppercase tracking-[.18em] text-[var(--faint)]">
+                Shanghai
+              </p>
+            </div>
 
-  <div className="text-center">
-    <p className="font-brand text-xs uppercase tracking-[0.2em] text-[var(--cyan)]">
-      Upload Privacy
-    </p>
-    <p className="mt-2 text-sm text-[var(--muted)]">
-      Files are used only for this review request. They are not stored by the analyzer.
-    </p>
-  </div>
-</div>
+            {/* studio links */}
+            <div>
+              <h4 className="font-brand text-[11px] font-bold uppercase tracking-[.18em] text-[var(--cyan)]">
+                Studio
+              </h4>
+              <ul className="mt-3.5 space-y-2.5 text-[14px] font-semibold text-[var(--muted)]">
+                <li>
+                  <a className="transition hover:text-[var(--cyan)]" href="https://www.dragonpixelstudio.com" target="_blank" rel="noopener noreferrer">
+                    Studio home
+                  </a>
+                </li>
+                <li>
+                  <a className="transition hover:text-[var(--cyan)]" href="https://launch.dragonpixelstudio.com" target="_blank" rel="noopener noreferrer">
+                    Store Analyzer
+                  </a>
+                </li>
+                <li>
+                  <a className="transition hover:text-[var(--cyan)]" href="https://www.dragonpixelstudio.com" target="_blank" rel="noopener noreferrer">
+                    Our games
+                  </a>
+                </li>
+              </ul>
+            </div>
 
-  <p className="mt-8 text-xs font-semibold text-[var(--faint)]">
-    © 2026 Dragon Pixel Studio ·{" "}
-    <a
-      href="https://dragonpixelstudio.com"
-      className="text-[var(--cyan)] hover:underline"
-    >
-      dragonpixelstudio.com
-    </a>
-  </p>
-</footer>
+            {/* how it works */}
+            <div>
+              <h4 className="font-brand text-[11px] font-bold uppercase tracking-[.18em] text-[var(--cyan)]">
+                How it works
+              </h4>
+              <div className="mt-3.5 space-y-3 text-[13.5px] leading-6 text-[var(--muted)]">
+                <p>
+                  <span className="font-bold text-[var(--foreground)]">Scoring engine — </span>
+                  the AI reads the visuals; Dragon Pixel scores clarity, click pull, polish, and conversion
+                  risk with fixed rules.
+                </p>
+                <p>
+                  <span className="font-bold text-[var(--foreground)]">Upload privacy — </span>
+                  files are used only for this review request. They&apos;re not stored by the analyzer.
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* bottom bar */}
+          <div className="mt-9 flex flex-col items-center justify-between gap-2 border-t border-white/10 pt-5 text-[12.5px] font-semibold text-[var(--faint)] md:flex-row">
+            <span>© 2026 Dragon Pixel Studio. All rights reserved.</span>
+            <a
+              href="https://www.dragonpixelstudio.com"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[var(--cyan)] transition hover:underline"
+            >
+              dragonpixelstudio.com
+            </a>
+          </div>
+        </div>
+      </footer>
     </main>
   );
 }

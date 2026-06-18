@@ -3,9 +3,9 @@
 /* Brand tokens — kept in sync with the marketing site for one identity. */
 :root {
   --background: #07070d;
-  --foreground: #f3f3fa;
-  --muted: #b9b9cf;
-  --faint: #7e7e98;
+  --foreground: #fbfcff;
+  --muted: #c9cfe2;
+  --faint: #9aa3bd;
   --cyan: #18e0ff;
   --magenta: #ff3db4;
   --gold: #ffc23d;
@@ -66,7 +66,7 @@ body::after {
     );
 }
 
-/* Orbitron for display headings (use className="font-brand"). */
+/* Exo 2 for display headings (use className="font-brand"). */
 .font-brand,
 .font-display {
   font-family: var(--font-brand), var(--font-body), system-ui, sans-serif;
@@ -239,4 +239,28 @@ body::after {
 }
 .dpx-details[open] .dpx-chev svg {
   transform: rotate(180deg);
+}
+
+/* Re-upload bar: subtle breathing glow so it's noticeable without competing
+   with the hero or the readings. Pauses on hover, off for reduced motion. */
+@keyframes dpx-reupload-glow {
+  0%, 100% {
+    border-color: var(--edge);
+    box-shadow: 0 0 0 0 rgba(24, 224, 255, 0);
+  }
+  50% {
+    border-color: rgba(24, 224, 255, 0.4);
+    box-shadow: 0 0 16px -4px rgba(24, 224, 255, 0.32);
+  }
+}
+.dpx-reupload {
+  animation: dpx-reupload-glow 2.8s ease-in-out infinite;
+}
+.dpx-reupload:hover {
+  animation-play-state: paused;
+}
+@media (prefers-reduced-motion: reduce) {
+  .dpx-reupload {
+    animation: none;
+  }
 }

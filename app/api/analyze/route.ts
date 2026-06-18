@@ -79,7 +79,6 @@ type JsonBody =
       error: string;
     }
   | {
-      report: string;
       observations: Observations;
       calculated: ReturnType<typeof calculateDragonPixelScores>;
       verdict: string;
@@ -883,24 +882,6 @@ function verdictFromScore(score: number) {
   return "Problem — needs rework";
 }
 
-function bulletList(items?: string[]) {
-  const clean = dedupeList(items);
-  if (clean.length === 0) return "- No clear observation returned.";
-  return clean.map((item) => `- ${item}`).join("\n");
-}
-
-function fixesList(fixes?: DragonPixelFix[]) {
-  if (!fixes || fixes.length === 0) return "1. No clear fix returned.";
-  return fixes
-    .map((f, i) => {
-      const lines = [`${i + 1}. **${f.action}**`];
-      if (f.why) lines.push(`   - Why: ${f.why}`);
-      if (f.change) lines.push(`   - Change: ${f.change}`);
-      return lines.join("\n");
-    })
-    .join("\n\n");
-}
-
 export async function OPTIONS(req: Request) {
   if (!isAllowedRequestOrigin(req)) {
     return new Response(null, {
@@ -1236,165 +1217,7 @@ const response = await ai.models.generateContent({
     });
     const verdict = verdictFromScore(calculated.launchScore);
 
-    const gameplaySection =
-      calculated.reviewMode === "iconOnly"
-        ? "_Not assessed in icon-only mode. Upload screenshots to evaluate gameplay clarity._"
-        : `### Understood in 3 Seconds\n\n${bulletList(
-            observations.gameplayCommunication?.understoodIn3Seconds
-          )}\n\n### Still Unclear\n\n${bulletList(
-            observations.gameplayCommunication?.unclearIn3Seconds
-          )}`;
-
-    const marketingNote =
-      calculated.reviewMode === "fullStoreSet"
-        ? ""
-        : "\n\n_Marketing confidence is partial — add the full store set (icon + screenshots) for a complete read._";
-
-    const report = `
-# Dragon Pixel Store Review
-
-## Launch Score
-
-**Overall:** ${calculated.launchScore}/100  
-**Potential After Fixes:** ${calculated.potentialAfterFixes}/100  
-**Verdict:** *${verdict}*
-
-${observations.finalCall || "No final call returned."}
-
----
-
-## Review Mode — ${calculated.reviewModeLabel}
-
-${calculated.reviewModeNote}
-
----
-
-## Score Breakdown
-
-${calculated.breakdown.map((b) => `- **${b.label}:** ${b.value}`).join("\n")}
-
----
-
-## Shelf Test
-
-### Visible at Small Size
-
-${bulletList(observations.shelfTest?.visibleElements)}
-
-### Lost at Small Size
-
-${bulletList(observations.shelfTest?.lostElements)}
-
-### Dominant Element
-
-**${observations.shelfTest?.dominantElement || "No dominant element returned."}**
-
----
-
-## Click Test
-
-### Curiosity Signals
-
-${bulletList(observations.clickTest?.curiositySignals)}
-
-### Reward Signals
-
-${bulletList(observations.clickTest?.rewardSignals)}
-
-### Danger / Urgency Signals
-
-${bulletList([
-  ...(observations.clickTest?.dangerSignals || []),
-  ...(observations.clickTest?.urgencySignals || []),
-])}
-
-### Click Blockers
-
-${bulletList(observations.clickTest?.clickBlockers)}
-
----
-
-## Gameplay Communication
-
-${gameplaySection}
-
----
-
-## Emotional Signal
-
-### Current Signal
-
-${bulletList(observations.emotionalSignal?.currentSignals)}
-
-### Missing Signal
-
-${bulletList(observations.emotionalSignal?.missingSignals)}
-
----
-
-## Visual Polish
-
-### Strengths
-
-${bulletList(observations.polish?.strengths)}
-
-### Weaknesses
-
-${bulletList(observations.polish?.weaknesses)}
-
-**Commercial Polish:** *${observations.polish?.commercialPolish || "medium"}*
-
----
-
-## Asset Review
-
-${(observations.assetReview || [])
-  .map(
-    (asset) => `
-### ${asset.assetName}
-
-**Observation:** ${asset.mainObservation}
-
-**Issue:** ${asset.mainIssue}
-
-**Best Fix:** ${asset.bestFix}
-`
-  )
-  .join("\n")}
-
----
-
-## What Works
-
-${bulletList(observations.whatWorks)}
-
----
-
-## What Hurts Conversion
-
-${bulletList(observations.whatHurtsConversion)}
-
----
-
-## Dragon Pixel Fixes
-
-${fixesList(observations.dragonPixelFixes)}
-
----
-
-## Marketing Confidence
-
-${observations.marketingRiskSummary || "No marketing confidence summary returned."}${marketingNote}
-
----
-
-## Final Call
-
-**${observations.finalCall || "No final call returned."}**
-`.trim();
-
     return jsonResponse({
-      report,
       observations,
       calculated,
       verdict,
