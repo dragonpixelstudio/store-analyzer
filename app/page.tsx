@@ -914,6 +914,7 @@ export default function Home() {
               Free store audit
             </span>
             <h2 className="font-brand text-[22px] font-bold">Upload store assets</h2>
+            <p className="mt-3 max-w-md text-sm font-semibold text-[var(--muted)]"> </p>
 
             {/* dropzone */}
             <label
@@ -1517,34 +1518,37 @@ export default function Home() {
       )}
 
       {/* footer */}
-      <footer className="mt-4 pt-6">
-<div className="mt-10 grid gap-4 text-sm md:grid-cols-3">
-  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-    <p className="font-brand text-xs uppercase tracking-[0.18em] text-[var(--cyan)]">
+<footer className="mt-12 text-center">
+<div className="mx-auto grid max-w-5xl grid-cols-1 gap-6 rounded-3xl border border-white/10 bg-white/[0.02] px-6 py-6 shadow-[0_18px_60px_rgba(0,0,0,.2)] md:grid-cols-2">
+  <div className="text-center">
+    <p className="font-brand text-xs uppercase tracking-[0.2em] text-[var(--cyan)]">
       Scoring Engine
     </p>
-    <p className="mt-2 text-[var(--muted)]">
+    <p className="mt-2 text-sm text-[var(--muted)]">
       AI reads the visuals. Dragon Pixel scores clarity, click pull, polish, and conversion risk.
     </p>
   </div>
 
-  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
-    <p className="font-brand text-xs uppercase tracking-[0.18em] text-[var(--cyan)]">
+  <div className="text-center">
+    <p className="font-brand text-xs uppercase tracking-[0.2em] text-[var(--cyan)]">
       Upload Privacy
     </p>
-    <p className="mt-2 text-[var(--muted)]">
+    <p className="mt-2 text-sm text-[var(--muted)]">
       Files are used only for this review request. They are not stored by the analyzer.
     </p>
   </div>
-        </div>
-        <div className="text-center text-[13px] font-semibold text-[var(--faint)]">
-          © 2026 Dragon Pixel Studio
-          <span className="mx-2 opacity-45">·</span>
-          <a href="https://www.dragonpixelstudio.com" target="_blank" rel="noopener noreferrer" className="text-[var(--cyan)] hover:underline">
-            dragonpixelstudio.com
-          </a>
-        </div>
-      </footer>
+</div>
+
+  <p className="mt-8 text-xs font-semibold text-[var(--faint)]">
+    © 2026 Dragon Pixel Studio ·{" "}
+    <a
+      href="https://dragonpixelstudio.com"
+      className="text-[var(--cyan)] hover:underline"
+    >
+      dragonpixelstudio.com
+    </a>
+  </p>
+</footer>
     </main>
   );
 }
