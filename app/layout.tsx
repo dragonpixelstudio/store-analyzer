@@ -1,19 +1,19 @@
 import type { Metadata } from "next";
-import { Orbitron, Rajdhani } from "next/font/google";
+import { Exo_2, Inter } from "next/font/google";
 import "./globals.css";
 
-// Matches the marketing site: Orbitron (display) + Rajdhani (body).
-const orbitron = Orbitron({
+// Matches the marketing site (dragonpixelstudio.com): Exo 2 (display) + Inter (body).
+const exo2 = Exo_2({
   variable: "--font-brand",
   subsets: ["latin"],
-  weight: ["500", "700", "900"],
+  weight: ["600", "700", "800", "900"],
   display: "swap",
 });
 
-const rajdhani = Rajdhani({
+const inter = Inter({
   variable: "--font-body",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700"],
+  weight: ["400", "500", "600", "700", "800"],
   display: "swap",
 });
 
@@ -28,7 +28,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${orbitron.variable} ${rajdhani.variable}`}>
+      <body className={`${exo2.variable} ${inter.variable}`}>
         {children}
       </body>
     </html>

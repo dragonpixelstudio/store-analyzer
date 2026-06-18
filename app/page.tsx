@@ -939,9 +939,7 @@ export default function Home() {
               Free store audit
             </span>
             <h2 className="font-brand text-[22px] font-bold">Upload store assets</h2>
-            <p className="mb-4 mt-1.5 text-[15px] font-semibold text-[var(--muted)]">
-              Sorted automatically — override the type on any file.
-            </p>
+            <p className="mb-4 mt-1.5 text-[15px] font-semibold text-[var(--muted)]"></p>
 
             {/* dropzone */}
             <label
@@ -1523,7 +1521,7 @@ export default function Home() {
       {/* footer */}
       <footer className="mt-16">
         <div className="rounded-3xl border border-white/10 bg-white/[0.02] px-7 py-9 shadow-[0_18px_60px_rgba(0,0,0,.25)]">
-          <div className="grid grid-cols-1 gap-9 md:grid-cols-[1.5fr_1fr_1.6fr]">
+          <div className="grid grid-cols-1 gap-9 md:grid-cols-2 md:items-start">
             {/* brand */}
             <div>
               <Image
@@ -1533,38 +1531,12 @@ export default function Home() {
                 height={52}
                 className="h-9 w-auto opacity-90"
               />
-              <p className="mt-3 max-w-xs text-[13.5px] leading-6 text-[var(--muted)]">
-                Dragon Pixel Studio builds premium mobile and Steam games. Store Analyzer is our free
-                pre-launch conversion review.
-              </p>
-              <p className="mt-3 font-brand text-[11px] font-bold uppercase tracking-[.18em] text-[var(--faint)]">
-                Shanghai
+              <p className="mt-3 max-w-xs text-[13.5px] leading-6 text-[var(--muted)]"> 
+                Store Analyzer is our free pre-launch conversion review tool.
               </p>
             </div>
 
             {/* studio links */}
-            <div>
-              <h4 className="font-brand text-[11px] font-bold uppercase tracking-[.18em] text-[var(--cyan)]">
-                Studio
-              </h4>
-              <ul className="mt-3.5 space-y-2.5 text-[14px] font-semibold text-[var(--muted)]">
-                <li>
-                  <a className="transition hover:text-[var(--cyan)]" href="https://www.dragonpixelstudio.com" target="_blank" rel="noopener noreferrer">
-                    Studio home
-                  </a>
-                </li>
-                <li>
-                  <a className="transition hover:text-[var(--cyan)]" href="https://launch.dragonpixelstudio.com" target="_blank" rel="noopener noreferrer">
-                    Store Analyzer
-                  </a>
-                </li>
-                <li>
-                  <a className="transition hover:text-[var(--cyan)]" href="https://www.dragonpixelstudio.com" target="_blank" rel="noopener noreferrer">
-                    Our games
-                  </a>
-                </li>
-              </ul>
-            </div>
 
             {/* how it works */}
             <div>
@@ -1573,12 +1545,12 @@ export default function Home() {
               </h4>
               <div className="mt-3.5 space-y-3 text-[13.5px] leading-6 text-[var(--muted)]">
                 <p>
-                  <span className="font-bold text-[var(--foreground)]">Scoring engine — </span>
-                  the AI reads the visuals; Dragon Pixel scores clarity, click pull, polish, and conversion
-                  risk with fixed rules.
+                  <span className="font-bold text-[var(--foreground)]">Scoring engine - </span>
+                  AI reads the visuals, Dragon Pixel scores clarity, click pull, polish, and conversion
+                  risk with our algorithm.
                 </p>
                 <p>
-                  <span className="font-bold text-[var(--foreground)]">Upload privacy — </span>
+                  <span className="font-bold text-[var(--foreground)]">Upload privacy - </span>
                   files are used only for this review request. They&apos;re not stored by the analyzer.
                 </p>
               </div>
