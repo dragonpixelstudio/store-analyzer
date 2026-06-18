@@ -914,9 +914,6 @@ export default function Home() {
               Free store audit
             </span>
             <h2 className="font-brand text-[22px] font-bold">Upload store assets</h2>
-            <p className="mb-4 mt-1.5 text-[15px] font-semibold text-[var(--muted)]">
-              Sorted automatically — override the type on any file.
-            </p>
 
             {/* dropzone */}
             <label
@@ -1521,19 +1518,24 @@ export default function Home() {
 
       {/* footer */}
       <footer className="mt-4 pt-6">
-        <div className="mb-5 grid grid-cols-1 gap-4 opacity-60 md:grid-cols-2">
-          <div>
-            <h4 className="font-brand text-center text-[11px] font-bold uppercase tracking-[.16em] text-[var(--muted)]">Scoring engine</h4>
-            <p className="text-[13px] font-semibold text-[var(--faint)]">
-              The AI observes the visuals. Dragon Pixel calculates the score with fixed conversion rules — clarity, click pull, emotion, confidence, polish.
-            </p>
-          </div>
-          <div>
-            <h4 className="font-brand text-center text-[11px] font-bold uppercase tracking-[.16em] text-[var(--muted)]">Upload privacy</h4>
-            <p className="text-[13px] font-semibold text-[var(--faint)]">
-              Your files aren&apos;t saved. Images are sent to the AI review service for the analysis request only.
-            </p>
-          </div>
+<div className="mt-10 grid gap-4 text-sm md:grid-cols-3">
+  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+    <p className="font-brand text-xs uppercase tracking-[0.18em] text-[var(--cyan)]">
+      Scoring Engine
+    </p>
+    <p className="mt-2 text-[var(--muted)]">
+      AI reads the visuals. Dragon Pixel scores clarity, click pull, polish, and conversion risk.
+    </p>
+  </div>
+
+  <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-4">
+    <p className="font-brand text-xs uppercase tracking-[0.18em] text-[var(--cyan)]">
+      Upload Privacy
+    </p>
+    <p className="mt-2 text-[var(--muted)]">
+      Files are used only for this review request. They are not stored by the analyzer.
+    </p>
+  </div>
         </div>
         <div className="text-center text-[13px] font-semibold text-[var(--faint)]">
           © 2026 Dragon Pixel Studio
