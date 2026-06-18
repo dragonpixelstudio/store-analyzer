@@ -11,6 +11,7 @@ const ai = new GoogleGenAI({
 const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2 MB per image
 const MAX_IMAGE_PIXELS = 12_000_000;
 const MAX_SCREENSHOTS = 3;
+const MAX_CREATIVES = 3;
 const ALLOWED_ORIGINS = new Set([
   "https://launch.dragonpixelstudio.com",
   "https://www.dragonpixelstudio.com",
@@ -66,10 +67,12 @@ type Observations = {
   }[];
   whatWorks?: string[];
   whatHurtsConversion?: string[];
-  dragonPixelFixes?: string[];
+  dragonPixelFixes?: DragonPixelFix[];
   marketingRiskSummary?: string;
   finalCall?: string;
 };
+
+type DragonPixelFix = { action: string; why: string; change: string };
 
 type JsonBody =
   | {
@@ -123,6 +126,29 @@ function commercialPolishValue(value: unknown): CommercialPolish {
   }
 
   return "medium";
+}
+
+function dragonPixelFixesValue(value: unknown): DragonPixelFix[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const fixes = value
+    .map((item) => {
+      // tolerate either a plain string (legacy) or the structured object
+      if (typeof item === "string") {
+        const action = item.trim();
+        return action ? { action, why: "", change: "" } : null;
+      }
+      if (isRecord(item)) {
+        const action = stringValue(item.action) || "";
+        const why = stringValue(item.why) || "";
+        const change = stringValue(item.change) || "";
+        if (!action && !change) return null;
+        return { action: action || change, why, change };
+      }
+      return null;
+    })
+    .filter((f): f is DragonPixelFix => f !== null)
+    .slice(0, 6);
+  return fixes.length > 0 ? fixes : undefined;
 }
 
 function assetReviewValue(value: unknown): Observations["assetReview"] {
@@ -203,7 +229,7 @@ function sanitizeObservations(value: unknown): Observations | null {
     assetReview: assetReviewValue(value.assetReview),
     whatWorks: stringArray(value.whatWorks),
     whatHurtsConversion: stringArray(value.whatHurtsConversion),
-    dragonPixelFixes: stringArray(value.dragonPixelFixes),
+    dragonPixelFixes: dragonPixelFixesValue(value.dragonPixelFixes),
     marketingRiskSummary: stringValue(value.marketingRiskSummary),
     finalCall: stringValue(value.finalCall),
   };
@@ -241,7 +267,7 @@ function clampScore(score: number) {
 }
 
 function roundToNearestFive(score: number) {
-  return Math.round(score / 5) * 5;
+  return Math.max(0, Math.min(100, Math.round(score / 5) * 5));
 }
 
 function sniffImageMime(buf: Buffer): string | null {
@@ -438,33 +464,37 @@ function collectFreeText(obs: Observations): string {
 
   pushArr(obs.whatWorks);
   pushArr(obs.whatHurtsConversion);
-  pushArr(obs.dragonPixelFixes);
+  (obs.dragonPixelFixes || []).forEach((fix) => {
+    push(fix.action);
+    push(fix.why);
+    push(fix.change);
+  });
   push(obs.marketingRiskSummary);
   push(obs.finalCall);
 
   return out.join(" ").toLowerCase();
 }
 
-type ReviewMode = "iconOnly" | "screenshotsOnly" | "fullStoreSet";
+type ReviewMode = "iconOnly" | "assetOnly" | "fullStoreSet";
 
-function getReviewMode(hasIcon: boolean, screenshotCount: number): ReviewMode {
-  if (hasIcon && screenshotCount === 0) return "iconOnly";
-  if (!hasIcon && screenshotCount > 0) return "screenshotsOnly";
-  return "fullStoreSet"; // hasIcon && screenshotCount > 0
+function getReviewMode(hasIcon: boolean, nonIconCount: number): ReviewMode {
+  if (hasIcon && nonIconCount === 0) return "iconOnly";
+  if (!hasIcon && nonIconCount > 0) return "assetOnly";
+  return "fullStoreSet"; // hasIcon && nonIconCount > 0
 }
 
 const REVIEW_MODE_LABEL: Record<ReviewMode, string> = {
   iconOnly: "Icon only",
-  screenshotsOnly: "Screenshots only",
+  assetOnly: "No icon",
   fullStoreSet: "Full store set",
 };
 
 const REVIEW_MODE_NOTE: Record<ReviewMode, string> = {
   iconOnly:
     "This review focuses on icon performance. Gameplay clarity needs screenshots, and marketing confidence is partial until the full store set is uploaded — the icon is not being penalised for assets that weren't provided.",
-  screenshotsOnly:
-    "This review focuses on your screenshots. Shelf readability and marketing confidence are partial until an icon is added.",
-  fullStoreSet: "Full review across your icon and screenshots.",
+  assetOnly:
+    "This review focuses on the uploaded assets. Shelf readability and marketing confidence are partial until an icon is added.",
+  fullStoreSet: "Full review across your icon and the other store assets.",
 };
 
 // Remove obvious duplicate/padded observations (case- and filler-insensitive).
@@ -549,13 +579,51 @@ function computeStoreImpact(
   return { headline: "Likely losing installs", tone: "bad" };
 }
 
-function calculateDragonPixelScores(obs: Observations, reviewMode: ReviewMode) {
+type ShipDecision = {
+  label: string;
+  tone: "good" | "warn" | "bad";
+  sub: string;
+};
+
+// Decisive, founder-facing call — derived from the score band, but honest about
+// partial input: only a full store set (icon + other assets) can earn "SHIP".
+function computeShipDecision(
+  score: number,
+  reviewMode: ReviewMode,
+  reviewNoun: string
+): ShipDecision {
+  const strong = score >= 78;
+  const weak = score < 55;
+
+  if (reviewMode === "fullStoreSet") {
+    if (strong) return { label: "SHIP", tone: "good", sub: "Strong across the store set." };
+    if (weak) return { label: "DO NOT SHIP", tone: "bad", sub: "Rework before launch." };
+    return { label: "FIX BEFORE SHIPPING", tone: "warn", sub: "Close the conversion gaps first." };
+  }
+
+  // partial input — name the missing piece honestly
+  const missing = reviewMode === "iconOnly" ? "screenshots" : "an icon";
+  const lower = reviewNoun.toLowerCase();
+  if (strong)
+    return {
+      label: `STRONG ${reviewNoun.toUpperCase()}`,
+      tone: "good",
+      sub: `Add ${missing} for a full ship call.`,
+    };
+  if (weak) return { label: "DO NOT SHIP", tone: "bad", sub: `Rework the ${lower}.` };
+  return { label: "FIX BEFORE SHIPPING", tone: "warn", sub: `The ${lower} needs work first.` };
+}
+
+function calculateDragonPixelScores(
+  obs: Observations,
+  reviewMode: ReviewMode,
+  flags: { hasIcon: boolean; hasScreens: boolean; hasCreatives: boolean }
+) {
   const text = collectFreeText(obs);
-  const len = (arr?: string[]) => (Array.isArray(arr) ? arr.length : 0);
+  const len = (arr?: readonly unknown[]) => (Array.isArray(arr) ? arr.length : 0);
   const cap = (count: number, max = 3) => Math.min(count, max);
 
-  const hasIcon = reviewMode !== "screenshotsOnly";
-  const hasScreens = reviewMode !== "iconOnly";
+  const { hasIcon, hasScreens, hasCreatives } = flags;
 
   let shelfReadability = 50;
   let clickPull = 50;
@@ -657,11 +725,20 @@ function calculateDragonPixelScores(obs: Observations, reviewMode: ReviewMode) {
   };
 
   // Which categories the input actually lets us assess.
-  const gameplayAssessed = hasScreens; // needs screenshots
-  const marketingFull = hasIcon && hasScreens; // need both to judge the funnel
+  const shelfAssessed = hasIcon; // shelf test is icon-only
+  const gameplayAssessed = hasScreens; // needs real gameplay screenshots
+  const marketingFull = hasIcon && (hasScreens || hasCreatives); // funnel needs the icon + at least one store asset
+  const assessedByKey: Record<keyof typeof scores, boolean> = {
+    shelfReadability: shelfAssessed,
+    clickPull: true,
+    gameplayClarity: gameplayAssessed,
+    emotionalSignal: true,
+    marketingConfidence: marketingFull,
+    visualPolish: true,
+  };
 
-  // Mode-specific weights — only assessed categories, renormalised so a
-  // missing category never drags the overall score down.
+  // Mode-specific weights — renormalised over only the categories the input
+  // actually lets us assess, so a missing category never drags the score.
   const weightsByMode: Record<ReviewMode, Partial<Record<keyof typeof scores, number>>> = {
     iconOnly: {
       shelfReadability: 30,
@@ -670,7 +747,7 @@ function calculateDragonPixelScores(obs: Observations, reviewMode: ReviewMode) {
       emotionalSignal: 15,
       marketingConfidence: 10, // partial, screenshot-free value
     },
-    screenshotsOnly: {
+    assetOnly: {
       gameplayClarity: 30,
       clickPull: 20,
       emotionalSignal: 20,
@@ -688,17 +765,19 @@ function calculateDragonPixelScores(obs: Observations, reviewMode: ReviewMode) {
   };
 
   const weights = weightsByMode[reviewMode];
-  const totalWeight = Object.values(weights).reduce((a, b) => a + (b ?? 0), 0);
 
   let launchScore = 0;
+  let totalWeight = 0;
   for (const [key, weight] of Object.entries(weights) as [
     keyof typeof scores,
     number
   ][]) {
+    if (!assessedByKey[key]) continue; // skip categories we can't honestly assess
     launchScore += (scores[key] / 100) * weight;
+    totalWeight += weight;
   }
 launchScore = roundToNearestFive(
-  clampScore((launchScore / totalWeight) * 100)
+  clampScore(totalWeight > 0 ? (launchScore / totalWeight) * 100 : 0)
 );
 
 const potentialAfterFixes = roundToNearestFive(
@@ -714,7 +793,12 @@ const potentialAfterFixes = roundToNearestFive(
   // Human-facing breakdown: a number where assessed, a status otherwise.
   const fmt = (n: number) => `${n}/100`;
   const breakdown: { key: string; label: string; value: string; assessed: boolean }[] = [
-    { key: "shelfReadability", label: "Shelf Readability", value: fmt(scores.shelfReadability), assessed: true },
+    {
+      key: "shelfReadability",
+      label: "Shelf Readability",
+      value: shelfAssessed ? fmt(scores.shelfReadability) : "Needs an icon",
+      assessed: shelfAssessed,
+    },
     { key: "clickPull", label: "Click Pull", value: fmt(scores.clickPull), assessed: true },
     {
       key: "gameplayClarity",
@@ -740,18 +824,51 @@ const potentialAfterFixes = roundToNearestFive(
   const storeImpact = computeStoreImpact(conversionRisk);
   const biggestProblem =
     dedupeList(obs.whatHurtsConversion)[0] || obs.finalCall || "";
-  const topFixes = dedupeList(obs.dragonPixelFixes).slice(0, 3);
+  const topFixes = (obs.dragonPixelFixes || [])
+    .filter((f, i, arr) => arr.findIndex((g) => g.action === f.action) === i)
+    .slice(0, 3);
+
+  const reviewNoun =
+    hasIcon && !hasScreens && !hasCreatives
+      ? "Icon"
+      : !hasIcon && hasScreens && !hasCreatives
+      ? "Screenshots"
+      : !hasIcon && !hasScreens && hasCreatives
+      ? "Creative"
+      : "Store";
+
+  // decision + crisp strong/weak summary, derived from the assessed bars
+  const decision = computeShipDecision(launchScore, reviewMode, reviewNoun);
+  const assessedRows = breakdown.filter((b) => b.assessed);
+  const byScore = [...assessedRows].sort(
+    (a, b) =>
+      (scores[b.key as keyof typeof scores] ?? 0) -
+      (scores[a.key as keyof typeof scores] ?? 0)
+  );
+  const strongest = byScore[0]?.label ?? "";
+  const weakest = byScore[byScore.length - 1]?.label ?? "";
+  const summaryLine =
+    strongest && weakest && strongest !== weakest
+      ? `Strong ${strongest.toLowerCase()}, weak ${weakest.toLowerCase()}.`
+      : obs.finalCall || "";
+  const strengths = dedupeList(obs.whatWorks).slice(0, 3);
+  const weaknesses = dedupeList(obs.whatHurtsConversion).slice(0, 3);
 
   return {
     reviewMode,
     reviewModeLabel: REVIEW_MODE_LABEL[reviewMode],
     reviewModeNote: REVIEW_MODE_NOTE[reviewMode],
+    reviewNoun: reviewNoun,
     scores,
     breakdown,
     launchScore,
     potentialAfterFixes,
     conversionRisk,
     storeImpact,
+    decision,
+    summaryLine,
+    strengths,
+    weaknesses,
     biggestProblem,
     topFixes,
   };
@@ -772,10 +889,16 @@ function bulletList(items?: string[]) {
   return clean.map((item) => `- ${item}`).join("\n");
 }
 
-function numberedList(items?: string[]) {
-  const clean = dedupeList(items);
-  if (clean.length === 0) return "1. No clear fix returned.";
-  return clean.map((item, i) => `${i + 1}. ${item}`).join("\n");
+function fixesList(fixes?: DragonPixelFix[]) {
+  if (!fixes || fixes.length === 0) return "1. No clear fix returned.";
+  return fixes
+    .map((f, i) => {
+      const lines = [`${i + 1}. **${f.action}**`];
+      if (f.why) lines.push(`   - Why: ${f.why}`);
+      if (f.change) lines.push(`   - Change: ${f.change}`);
+      return lines.join("\n");
+    })
+    .join("\n\n");
 }
 
 export async function OPTIONS(req: Request) {
@@ -852,9 +975,27 @@ export async function POST(req: Request) {
 
     const screenshots = rawScreenshots as File[];
 
-    if (!icon && screenshots.length === 0) {
+    // creative marketing assets (feature graphic / steam capsule / key art)
+    const rawCreatives = formData.getAll("creatives");
+    const rawCreativeKinds = formData.getAll("creativeKinds");
+    const invalidCreative = rawCreatives.find((item) => !(item instanceof File));
+    if (invalidCreative) {
+      return jsonResponse({ error: "Invalid creative upload." }, { status: 400 });
+    }
+    const creatives = rawCreatives as File[];
+    const CREATIVE_LABELS: Record<string, string> = {
+      featureGraphic: "FEATURE GRAPHIC",
+      steamCapsule: "STEAM CAPSULE",
+      keyArt: "KEY ART",
+    };
+    const creativeKinds = creatives.map((_, i) => {
+      const k = rawCreativeKinds[i];
+      return typeof k === "string" && CREATIVE_LABELS[k] ? CREATIVE_LABELS[k] : "KEY ART";
+    });
+
+    if (!icon && screenshots.length === 0 && creatives.length === 0) {
       return jsonResponse(
-        { error: "Upload at least one icon or screenshot." },
+        { error: "Upload at least one icon, screenshot, or creative." },
         { status: 400 }
       );
     }
@@ -862,6 +1003,13 @@ export async function POST(req: Request) {
     if (screenshots.length > MAX_SCREENSHOTS) {
       return jsonResponse(
         { error: `Upload at most ${MAX_SCREENSHOTS} screenshots.` },
+        { status: 400 }
+      );
+    }
+
+    if (creatives.length > MAX_CREATIVES) {
+      return jsonResponse(
+        { error: `Upload at most ${MAX_CREATIVES} marketing creatives.` },
         { status: 400 }
       );
     }
@@ -945,19 +1093,23 @@ Return this exact JSON shape. Set booleans based only on visible evidence, not o
   ],
   "whatWorks": [],
   "whatHurtsConversion": [],
-  "dragonPixelFixes": [],
+  "dragonPixelFixes": [
+    {
+      "action": "",
+      "why": "",
+      "change": ""
+    }
+  ],
   "marketingRiskSummary": "",
   "finalCall": ""
 }
 
 Observation rules:
 
-Shelf test:
-- Identify what survives at 32px.
-- Identify what disappears at 32px.
-- Identify where the eye lands first.
-- If glow overpowers the actual subject, say so.
-- If the player/main subject is visually lost, say so.
+Shelf test (ICON ONLY):
+- The shelf test describes the APP ICON only, because only the icon is shown at 32px in a store. Each image below is labelled.
+- If NO icon image was provided, you MUST return empty arrays for shelfTest.visibleElements and shelfTest.lostElements, an empty string for dominantElement, and false for focalPointClear, playerOrMainSubjectVisible, and smallSizeRisk. Never run the shelf test on a screenshot.
+- When an icon IS provided: identify what survives at 32px, what disappears at 32px, where the eye lands first, whether glow overpowers the subject, and whether the player/main subject is lost.
 
 Click test:
 - Identify what creates curiosity.
@@ -971,12 +1123,18 @@ Gameplay communication:
 - Be specific about objective, player action, reward, threat, and progression.
 
 Dragon Pixel fixes:
-- Give practical art-direction changes.
-- Example: "Reduce center bloom by 15% so the player silhouette survives 32px."
-- Example: "Move the red threat closer to the player to create near-miss tension."
-- Example: "Recapture screenshot 2 with a higher score and denser action so Endless Mode reads as mastery, not emptiness."
-- For APP ICONS specifically, less text usually beats more. Do NOT default to "increase stroke" or "make the title bigger". If the title competes with the main subject at 32px, recommend reducing or removing the text so the character/subject carries the icon.
+- Return 3 to 5 fixes. Each fix is an object with three short fields:
+  - "action": a short imperative title (e.g. "Show the player action clearly"). Max ~8 words.
+  - "why": one sentence on the conversion problem it solves (e.g. "Users see the visuals but not what they do.").
+  - "change": the concrete art/capture change (e.g. "Capture a dodge, collect, near-miss, or failure moment.").
+- Order them by conversion impact, biggest first.
+- Example: { "action": "Cut the icon text", "why": "The title competes with the subject at 32px.", "change": "Remove the wordmark so the character carries the icon." }
+- For APP ICONS specifically, less text usually beats more. Do NOT default to "increase stroke" or "make the title bigger".
 - Every fix must improve click-through rate, conversion rate, install probability, or ad spend efficiency.
+
+Asset types — each image below is labelled as one of: APP ICON, SCREENSHOT, FEATURE GRAPHIC, STEAM CAPSULE, or KEY ART. Treat them correctly:
+- SCREENSHOT = in-game gameplay. Only screenshots inform gameplay clarity.
+- FEATURE GRAPHIC / STEAM CAPSULE / KEY ART = marketing creatives, not gameplay. Judge them on shelf pull, click pull, and polish; do NOT treat them as gameplay screenshots or run the icon shelf test on them.
         `,
       },
     ];
@@ -986,6 +1144,7 @@ Dragon Pixel fixes:
       if ("error" in result) {
         return jsonResponse({ error: result.error }, { status: 400 });
       }
+      parts.push({ text: "The following image is the APP ICON. The shelf test applies to this image." });
       parts.push(result.part);
     }
 
@@ -994,7 +1153,26 @@ Dragon Pixel fixes:
       if ("error" in result) {
         return jsonResponse({ error: result.error }, { status: 400 });
       }
+      parts.push({ text: `The following image is SCREENSHOT ${i + 1} (not an icon — do not run the shelf test on it).` });
       parts.push(result.part);
+    }
+
+    for (let i = 0; i < creatives.length; i++) {
+      const label = creativeKinds[i];
+      const result = await prepareImagePart(creatives[i], label);
+      if ("error" in result) {
+        return jsonResponse({ error: result.error }, { status: 400 });
+      }
+      parts.push({
+        text: `The following image is a ${label} (marketing creative, not gameplay; do not run the icon shelf test on it).`,
+      });
+      parts.push(result.part);
+    }
+
+    if (!icon) {
+      parts.push({
+        text: "No app icon was provided. Leave the shelfTest fields empty/false as instructed and base shelf-related observations on nothing.",
+      });
     }
 
         const global = await globalRatelimit.limit("global");
@@ -1047,8 +1225,15 @@ const response = await ai.models.generateContent({
       );
     }
 
-    const reviewMode = getReviewMode(Boolean(icon), screenshots.length);
-    const calculated = calculateDragonPixelScores(observations, reviewMode);
+    const reviewMode = getReviewMode(
+      Boolean(icon),
+      screenshots.length + creatives.length
+    );
+    const calculated = calculateDragonPixelScores(observations, reviewMode, {
+      hasIcon: Boolean(icon),
+      hasScreens: screenshots.length > 0,
+      hasCreatives: creatives.length > 0,
+    });
     const verdict = verdictFromScore(calculated.launchScore);
 
     const gameplaySection =
@@ -1193,7 +1378,7 @@ ${bulletList(observations.whatHurtsConversion)}
 
 ## Dragon Pixel Fixes
 
-${numberedList(observations.dragonPixelFixes)}
+${fixesList(observations.dragonPixelFixes)}
 
 ---
 

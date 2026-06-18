@@ -233,3 +233,10 @@ body::after {
     opacity: 0.8;
   }
 }
+/* Advanced-analysis disclosure: rotate the chevron when open, hide default marker */
+.dpx-details > summary::-webkit-details-marker {
+  display: none;
+}
+.dpx-details[open] .dpx-chev svg {
+  transform: rotate(180deg);
+}
