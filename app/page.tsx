@@ -881,6 +881,8 @@ export default function Home() {
   });
   const scoreColor = (v: number) =>
     v >= 80 ? "var(--green)" : v >= 50 ? "var(--gold)" : "var(--magenta)";
+  // server truth: did the input actually let us assess gameplay clarity (needs screenshots)?
+  const gameplayAssessed = breakdown.find((r) => r.key === "gameplayClarity")?.assessed ?? false;
   // the 32px shelf test is an icon concept; only show it when an icon was uploaded
   const previewAsset = assets.find((a) => a.role === "icon" && !a.error) || null;
   const impactTone =
@@ -1136,9 +1138,9 @@ export default function Home() {
             <div className="font-brand text-[10px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">
               Launch score
             </div>
-            <div className="font-brand mt-1 text-[38px] font-black leading-[1.05] text-[var(--cyan)]">
+            <div className="font-score mt-1 text-[38px] font-black leading-[1.05] text-[var(--cyan)]">
               {hasResult ? launchVal : "72"}
-              <span className="text-base font-bold text-[var(--faint)]">/100</span>
+              <span className="font-brand text-base font-bold text-[var(--faint)]">/100</span>
             </div>
           </div>
 
@@ -1146,9 +1148,9 @@ export default function Home() {
             <div className="font-brand text-[10px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">
               Potential
             </div>
-            <div className="font-brand mt-1 text-[38px] font-black leading-[1.05] text-[var(--gold)]">
+            <div className="font-score mt-1 text-[38px] font-black leading-[1.05] text-[var(--gold)]">
               {hasResult ? potentialVal : "88"}
-              <span className="text-base font-bold text-[var(--faint)]">/100</span>
+              <span className="font-brand text-base font-bold text-[var(--faint)]">/100</span>
             </div>
           </div>
         </div>
@@ -1239,7 +1241,7 @@ export default function Home() {
             </div>
             <div className="flex flex-wrap items-end gap-x-7 gap-y-3">
               <div
-                className="font-brand font-black leading-[.82]"
+                className="font-score font-black leading-[.82]"
                 style={{
                   fontSize: "clamp(72px,15vw,120px)",
                   color: score != null ? scoreColor(score) : "var(--cyan)",
@@ -1304,9 +1306,9 @@ export default function Home() {
               style={{ background: "linear-gradient(160deg,rgba(18,18,34,.96),rgba(7,8,18,.96))" }}
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
-                <span className="font-brand text-[15px] font-black">Will people click?</span>
+                <span className="font-brand text-[15px] font-black">Conversion risk</span>
                 <span className="font-brand text-[15px] font-black" style={{ color: impactTone }}>
-                  {risk.level}
+                  {risk.assessed ? risk.level : "Partial read"}
                 </span>
               </div>
               <div className="mt-3 flex items-center gap-3">
@@ -1338,7 +1340,11 @@ export default function Home() {
               }}
             >
               <div className="font-brand text-[11px] font-bold uppercase tracking-[.2em] text-[var(--green)]">
-                What to fix
+                {decision?.tone === "good"
+                  ? "What to improve"
+                  : decision?.tone === "bad"
+                  ? "Fix before launch"
+                  : "What to fix"}
               </div>
               <h2 className="font-brand mt-1 text-[22px] font-black">Top 3 actions</h2>
               <p className="mb-5 mt-1.5 text-sm font-semibold text-[var(--muted)]">
@@ -1460,18 +1466,35 @@ export default function Home() {
                   </div>
                 )}
 
-              {/* gameplay clarity */}
-              {gameplay && (gameplay.clear.length > 0 || gameplay.unclear.length > 0) && (
+              {/* gameplay clarity — only a real read when screenshots were provided */}
+              {gameplayAssessed ? (
+                (gameplay?.clear.length || gameplay?.unclear.length) ? (
+                  <div>
+                    <div className="mb-3 font-brand text-[11px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">
+                      Gameplay clarity — reads in 3 seconds?
+                    </div>
+                    <ChecklistCols
+                      good={gameplay?.clear ?? []}
+                      bad={gameplay?.unclear ?? []}
+                      goodLabel="Clear in 3s"
+                      badLabel="Still unclear"
+                    />
+                  </div>
+                ) : null
+              ) : (
                 <div>
                   <div className="mb-3 font-brand text-[11px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">
-                    Gameplay clarity — reads in 3 seconds?
+                    Gameplay clarity
                   </div>
-                  <ChecklistCols
-                    good={gameplay.clear}
-                    bad={gameplay.unclear}
-                    goodLabel="Clear in 3s"
-                    badLabel="Still unclear"
-                  />
+                  <div className="rounded-xl border border-dashed border-[var(--edge)] bg-white/[.02] px-4 py-3.5">
+                    <span className="font-brand text-[12px] font-bold uppercase tracking-[.14em] text-[var(--faint)]">
+                      Not assessed
+                    </span>
+                    <p className="mt-1.5 text-[13.5px] font-semibold leading-snug text-[var(--muted)]">
+                      Gameplay clarity needs in-game screenshots. Upload them to evaluate objective,
+                      player action, reward, and failure state — the icon alone only shows visual style.
+                    </p>
+                  </div>
                 </div>
               )}
 
@@ -1518,57 +1541,53 @@ export default function Home() {
         </section>
       )}
 
-      {/* footer */}
-      <footer className="mt-16">
-        <div className="rounded-3xl border border-white/10 bg-white/[0.02] px-7 py-9 shadow-[0_18px_60px_rgba(0,0,0,.25)]">
-          <div className="grid grid-cols-1 gap-9 md:grid-cols-2 md:items-start">
-            {/* brand */}
-            <div>
-              <Image
-                src="/logo.png"
-                alt="Dragon Pixel Studio"
-                width={240}
-                height={52}
-                className="h-9 w-auto opacity-90"
-              />
-              <p className="mt-3 max-w-xs text-[13.5px] leading-6 text-[var(--muted)]"> 
-                Store Analyzer is our free pre-launch conversion review tool.
+      {/* footer — full-width top rule separates it from the body, no card box */}
+      <footer className="mt-16 rounded-b-3xl border-t border-white/12 bg-white/[0.02] px-6 pt-10 pb-7">
+        <div className="grid grid-cols-1 gap-9 md:grid-cols-2 md:items-start">
+          {/* brand */}
+          <div>
+            <Image
+              src="/logo.png"
+              alt="Dragon Pixel Studio"
+              width={240}
+              height={52}
+              className="h-11 w-auto opacity-100"
+            />
+            <p className="mt-3 max-w-xs text-[13.5px] leading-6 text-[var(--muted)]">
+              1068 Beijing West Road, Jingan Shanghai.
+            </p>
+          </div>
+
+          {/* how it works */}
+          <div>
+            <h4 className="font-brand text-[11px] font-bold uppercase tracking-[.18em] text-[var(--cyan)]">
+              How it works
+            </h4>
+            <div className="mt-3.5 space-y-3 text-[13.5px] leading-6 text-[var(--muted)]">
+              <p>
+                <span className="font-bold text-[var(--foreground)]">Scoring engine - </span>
+                AI reads the visuals, Dragon Pixel scores clarity, click pull, polish and conversion
+                risk with our algorithm.
+              </p>
+              <p>
+                <span className="font-bold text-[var(--foreground)]">Upload privacy - </span>
+                Files are used only for this review request. They&apos;re not stored by the analyzer.
               </p>
             </div>
-
-            {/* studio links */}
-
-            {/* how it works */}
-            <div>
-              <h4 className="font-brand text-[11px] font-bold uppercase tracking-[.18em] text-[var(--cyan)]">
-                How it works
-              </h4>
-              <div className="mt-3.5 space-y-3 text-[13.5px] leading-6 text-[var(--muted)]">
-                <p>
-                  <span className="font-bold text-[var(--foreground)]">Scoring engine - </span>
-                  AI reads the visuals, Dragon Pixel scores clarity, click pull, polish, and conversion
-                  risk with our algorithm.
-                </p>
-                <p>
-                  <span className="font-bold text-[var(--foreground)]">Upload privacy - </span>
-                  files are used only for this review request. They&apos;re not stored by the analyzer.
-                </p>
-              </div>
-            </div>
           </div>
+        </div>
 
-          {/* bottom bar */}
-          <div className="mt-9 flex flex-col items-center justify-between gap-2 border-t border-white/10 pt-5 text-[12.5px] font-semibold text-[var(--faint)] md:flex-row">
-            <span>© 2026 Dragon Pixel Studio. All rights reserved.</span>
-            <a
-              href="https://www.dragonpixelstudio.com"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="text-[var(--cyan)] transition hover:underline"
-            >
-              dragonpixelstudio.com
-            </a>
-          </div>
+        {/* bottom bar */}
+        <div className="mt-10 flex flex-col items-center justify-between gap-2 border-t border-white/10 pt-5 text-[12.5px] font-semibold text-[var(--faint)] md:flex-row">
+          <span>© 2026 Dragon Pixel Studio. All rights reserved.</span>
+          <a
+            href="https://www.dragonpixelstudio.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="text-[var(--cyan)] transition hover:underline"
+          >
+            dragonpixelstudio.com
+          </a>
         </div>
       </footer>
     </main>

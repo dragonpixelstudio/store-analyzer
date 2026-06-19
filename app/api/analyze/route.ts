@@ -673,12 +673,14 @@ function calculateDragonPixelScores(
     emotionalSignal -= 10;
   }
 
-  // VISUAL POLISH
-  if (obs.polish?.commercialPolish === "high") visualPolish += 30;
+  // VISUAL POLISH — the commercial-polish tier is the strong signal; strength/
+  // weakness counts only nudge. Keep the nudge symmetric so a couple of minor
+  // nitpicks can't drag a genuinely high-polish asset down into the 70s.
+  if (obs.polish?.commercialPolish === "high") visualPolish += 33;
   if (obs.polish?.commercialPolish === "medium") visualPolish += 10;
   if (obs.polish?.commercialPolish === "low") visualPolish -= 25;
   visualPolish += cap(len(obs.polish?.strengths)) * 5;
-  visualPolish -= cap(len(obs.polish?.weaknesses)) * 7;
+  visualPolish -= cap(len(obs.polish?.weaknesses)) * 5;
   if (hasAny(text, ["premium", "polished", "clean", "high-quality", "cohesive"])) {
     visualPolish += 10;
   }
@@ -775,17 +777,24 @@ function calculateDragonPixelScores(
     launchScore += (scores[key] / 100) * weight;
     totalWeight += weight;
   }
-launchScore = roundToNearestFive(
-  clampScore(totalWeight > 0 ? (launchScore / totalWeight) * 100 : 0)
+// Headline ceiling: the per-category ceilings already reserve the top band for a
+// real benchmark pass. Extend that to the overall number — a free tool showing
+// 100/100 reads as amateur, so launch and potential top out at 95.
+launchScore = Math.min(
+  95,
+  roundToNearestFive(clampScore(totalWeight > 0 ? (launchScore / totalWeight) * 100 : 0))
 );
 
-const potentialAfterFixes = roundToNearestFive(
-  clampScore(
-    launchScore +
-      Math.min(
-        22,
-        len(obs.dragonPixelFixes) * 4 + len(obs.whatHurtsConversion) * 3
-      )
+const potentialAfterFixes = Math.min(
+  95,
+  roundToNearestFive(
+    clampScore(
+      launchScore +
+        Math.min(
+          22,
+          len(obs.dragonPixelFixes) * 4 + len(obs.whatHurtsConversion) * 3
+        )
+    )
   )
 );
 
@@ -845,10 +854,17 @@ const potentialAfterFixes = roundToNearestFive(
       (scores[a.key as keyof typeof scores] ?? 0)
   );
   const strongest = byScore[0]?.label ?? "";
-  const weakest = byScore[byScore.length - 1]?.label ?? "";
+  const weakestRow = byScore[byScore.length - 1];
+  const weakest = weakestRow?.label ?? "";
+  // A 72 is the *lowest* category, not a "weak" one — only call it weak when it
+  // really is. Keeps the one-line summary honest next to a SHIP verdict.
+  const weakestScore = weakestRow
+    ? scores[weakestRow.key as keyof typeof scores] ?? 0
+    : 0;
+  const weakWord = weakestScore < 62 ? "weak" : "softer";
   const summaryLine =
     strongest && weakest && strongest !== weakest
-      ? `Strong ${strongest.toLowerCase()}, weak ${weakest.toLowerCase()}.`
+      ? `Strong ${strongest.toLowerCase()}, ${weakWord} ${weakest.toLowerCase()}.`
       : obs.finalCall || "";
   const strengths = dedupeList(obs.whatWorks).slice(0, 3);
   const weaknesses = dedupeList(obs.whatHurtsConversion).slice(0, 3);

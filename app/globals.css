@@ -72,6 +72,11 @@ body::after {
   font-family: var(--font-brand), var(--font-body), system-ui, sans-serif;
 }
 
+/* Orbitron, scoped to the big score numbers only (className="font-score"). */
+.font-score {
+  font-family: var(--font-score), var(--font-brand), system-ui, sans-serif;
+}
+
 /* Ambient motion — slow + low, tied to the upload panel and dropzone. */
 @keyframes dpx-drift {
   from {

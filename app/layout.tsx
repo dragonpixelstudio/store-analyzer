@@ -1,5 +1,5 @@
 import type { Metadata } from "next";
-import { Exo_2, Inter } from "next/font/google";
+import { Exo_2, Inter, Orbitron } from "next/font/google";
 import "./globals.css";
 
 // Matches the marketing site (dragonpixelstudio.com): Exo 2 (display) + Inter (body).
@@ -17,6 +17,14 @@ const inter = Inter({
   display: "swap",
 });
 
+// Scoped to the big score numbers only (className="font-score").
+const orbitron = Orbitron({
+  variable: "--font-score",
+  subsets: ["latin"],
+  weight: ["700", "900"],
+  display: "swap",
+});
+
 export const metadata: Metadata = {
   title: "Dragon Pixel Store Analyzer",
   description:
@@ -28,7 +36,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${exo2.variable} ${inter.variable}`}>
+      <body className={`${exo2.variable} ${inter.variable} ${orbitron.variable}`}>
         {children}
       </body>
     </html>
