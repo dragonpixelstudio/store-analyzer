@@ -1,19 +1,19 @@
 import type { Metadata } from "next";
-import { Exo_2, Inter, Orbitron } from "next/font/google";
+import { Inter, Orbitron, Sora } from "next/font/google";
 import "./globals.css";
 
-// Matches the marketing site (dragonpixelstudio.com): Exo 2 (display) + Inter (body).
-const exo2 = Exo_2({
+// Product UI: Sora for headings/buttons/nav, Inter for body copy.
+const sora = Sora({
   variable: "--font-brand",
   subsets: ["latin"],
-  weight: ["600", "700", "800", "900"],
+  weight: ["500", "600", "700", "800"],
   display: "swap",
 });
 
 const inter = Inter({
   variable: "--font-body",
   subsets: ["latin"],
-  weight: ["400", "500", "600", "700", "800"],
+  weight: ["400", "500", "600", "700"],
   display: "swap",
 });
 
@@ -36,7 +36,7 @@ export default function RootLayout({
 }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en">
-      <body className={`${exo2.variable} ${inter.variable} ${orbitron.variable}`}>
+      <body className={`${sora.variable} ${inter.variable} ${orbitron.variable}`}>
         {children}
       </body>
     </html>

@@ -1,36 +1,38 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Dragon Pixel Store Analyzer
 
-## Getting Started
+Next.js app for reviewing mobile game icons, screenshots, and store creative.
+The analyzer produces a conversion-focused report, then routes paid beta interest
+to public Paddle-ready pricing and policy pages.
 
-First, run the development server:
+## Setup
+
+1. Copy `.env.example` to `.env.local`.
+2. Fill in `GEMINI_API_KEY` and the Upstash Redis variables for analysis.
+
+## Development
 
 ```bash
 npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Open `http://localhost:3000`.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## Paddle Verification Pages
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+The app exposes the public pages Paddle asks for during domain verification:
 
-## Learn More
+- `/pricing`
+- `/terms`
+- `/privacy`
+- `/refund-policy`
+- `/contact`
 
-To learn more about Next.js, take a look at the following resources:
+The live checkout is not hard-coded yet. After Paddle approves the domain, wire
+the pricing page CTA to Paddle Checkout or a Paddle-hosted purchase link.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Verification
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
-
-## Deploy on Vercel
-
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
-
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+```bash
+npm run lint
+npm run build
+```

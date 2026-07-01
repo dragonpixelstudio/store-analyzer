@@ -1,13 +1,57 @@
 "use client";
 
 import Image from "next/image";
+import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
+import { SiteFooter } from "@/app/components/SiteChrome";
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2 MB
 const MAX_SCREENSHOTS = 3;
 const MAX_CREATIVES = 3;
 const OK_TYPES = ["image/png", "image/jpeg", "image/webp"];
-const FORMSPREE = "https://formspree.io/f/xeedbrla";
+
+/* ---------- paid offer: diagnosis-driven store-asset packs ----------
+   Paddle verification needs the pricing/policy pages public first. The offer
+   links to pricing until the live Paddle checkout is enabled. */
+type PackId = "fix" | "store";
+
+const PACKS: {
+  id: PackId;
+  name: string;
+  price: string;
+  anchor: string;
+  bullets: string[];
+  cta: string;
+  flagship?: boolean;
+}[] = [
+  {
+    id: "store",
+    name: "Store Asset Pack",
+    price: "$79",
+    anchor: "Full store set · studios quote $150–400",
+    bullets: [
+      "Icon polish + 5 screenshot layouts",
+      "Feature graphic / Steam capsule",
+      "Built from the weak spots flagged above",
+      "Ready to upload, on-brand",
+    ],
+    cta: "View store pack pricing",
+    flagship: true,
+  },
+  {
+    id: "fix",
+    name: "Launch Fix Pack",
+    price: "$29",
+    anchor: "The fastest way to act on this review",
+    bullets: [
+      "3 corrected store screenshots from your real game",
+      "Fixes the exact weak spots flagged above",
+      "Headline, focal point + clarity pass",
+      "Delivered in 24 hours",
+    ],
+    cta: "View report pricing",
+  },
+];
 
 type Role = "icon" | "screenshot" | "featureGraphic" | "steamCapsule" | "keyArt";
 
@@ -372,21 +416,21 @@ function ShelfPreview({
     <div className="flex flex-wrap items-center gap-5">
       <div className="text-center">
         <canvas ref={fullRef} className="rounded-lg border border-[var(--edge)] bg-black" style={{ width: 150, height: "auto" }} />
-        <div className="font-brand mt-1.5 text-[9px] font-bold uppercase tracking-[.12em] text-[var(--faint)]">Full size</div>
+        <div className="mt-1.5 text-[9px] font-semibold uppercase tracking-[.12em] text-[var(--faint)]">Full size</div>
       </div>
       <div className="text-center">
         <canvas ref={tinyRef} className="rounded-md border border-[var(--edge)] bg-black" style={{ width: 32, height: 32, imageRendering: "auto" }} />
-        <div className="font-brand mt-1.5 text-[9px] font-bold uppercase tracking-[.12em] text-[var(--faint)]">At 32px</div>
+        <div className="mt-1.5 text-[9px] font-semibold uppercase tracking-[.12em] text-[var(--faint)]">At 32px</div>
       </div>
       <div className="min-w-[150px] flex-1 text-[13.5px]">
         {visible.map((v) => (
           <div key={`v-${v}`} className="mb-1.5 flex items-center gap-2 text-[var(--muted)]">
-            <span className="font-brand flex-none font-black text-[var(--green)]">✓</span> {v}
+            <span className="flex-none font-bold text-[var(--green)]">✓</span> {v}
           </div>
         ))}
         {lost.map((l) => (
           <div key={`l-${l}`} className="mb-1.5 flex items-center gap-2 text-[#c3a0a8]">
-            <span className="font-brand flex-none font-black text-[var(--magenta)]">✗</span> {l}
+            <span className="flex-none font-bold text-[var(--magenta)]">✗</span> {l}
           </div>
         ))}
         {visible.length === 0 && lost.length === 0 && (
@@ -418,7 +462,7 @@ function ChipGroup({
       : "var(--cyan)";
   return (
     <div className="mb-3.5 last:mb-0">
-      <div className="font-brand mb-2 text-[10px] font-bold uppercase tracking-[.14em]" style={{ color: c }}>
+      <div className="mb-2 text-[10px] font-semibold uppercase tracking-[.14em]" style={{ color: c }}>
         {label}
       </div>
       <div className="flex flex-wrap gap-2">
@@ -452,7 +496,7 @@ function ChecklistCols({
       className="mb-1.5 flex items-start gap-2 text-[13.5px] leading-snug"
       style={{ color: ok ? "var(--muted)" : "#c8aab2", breakInside: "avoid" }}
     >
-      <span className="font-brand mt-px flex-none font-black" style={{ color: ok ? "var(--green)" : "var(--magenta)" }}>
+      <span className="mt-px flex-none font-bold" style={{ color: ok ? "var(--green)" : "var(--magenta)" }}>
         {ok ? "✓" : "✗"}
       </span>
       <span>{t}</span>
@@ -470,7 +514,7 @@ function ChecklistCols({
     return (
       <div>
         <div
-          className="font-brand mb-2 text-[10px] font-bold uppercase tracking-[.14em]"
+          className="mb-2 text-[10px] font-semibold uppercase tracking-[.14em]"
           style={{ color: ok ? "var(--green)" : "var(--magenta)" }}
         >
           {label}
@@ -488,7 +532,7 @@ function ChecklistCols({
   return (
     <div className="grid grid-cols-1 gap-x-6 gap-y-4 sm:grid-cols-2">
       <div>
-        <div className="font-brand mb-2 text-[10px] font-bold uppercase tracking-[.14em] text-[var(--green)]">
+        <div className="mb-2 text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--green)]">
           {goodLabel}
         </div>
         {good.map((t, i) => (
@@ -496,7 +540,7 @@ function ChecklistCols({
         ))}
       </div>
       <div>
-        <div className="font-brand mb-2 text-[10px] font-bold uppercase tracking-[.14em] text-[var(--magenta)]">
+        <div className="mb-2 text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--magenta)]">
           {badLabel}
         </div>
         {bad.map((t, i) => (
@@ -510,8 +554,8 @@ function ChecklistCols({
 function ReportCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div
-      className="rounded-3xl border border-[var(--edge)] p-6"
-      style={{ background: "linear-gradient(160deg,rgba(18,18,34,.96),rgba(7,8,18,.96))" }}
+      className="rounded-2xl border border-[var(--edge)] p-6"
+      style={{ background: "linear-gradient(160deg,#11182a,#070b14)" }}
     >
       <div className="mb-4 font-brand text-[11px] font-bold uppercase tracking-[.2em] text-[var(--muted)]">
         {title}
@@ -521,18 +565,18 @@ function ReportCard({ title, children }: { title: string; children: React.ReactN
   );
 }
 
-function AnalyzingPanel({ noun }: { noun: string }) {
+function AnalyzingPanel() {
   const checks = ["Shelf readability", "Click pull", "Genre recognition", "Conversion risk"];
   return (
     <div
-      className="mx-auto flex max-w-xl flex-col items-center rounded-3xl border border-[rgba(24,224,255,.28)] px-6 py-12 text-center shadow-[0_22px_70px_rgba(0,0,0,.45)]"
+      className="mx-auto flex max-w-xl flex-col items-center rounded-2xl border border-[rgba(24,224,255,.28)] px-6 py-12 text-center shadow-[0_8px_24px_rgba(0,0,0,.2)]"
       style={{
         background:
           "radial-gradient(circle at 50% 0%,rgba(24,224,255,.12),transparent 55%),linear-gradient(160deg,rgba(15,22,42,.97),rgba(9,8,22,.97))",
       }}
     >
       <div className="relative mb-7 h-28 w-28">
-        <div className="absolute inset-0 overflow-hidden rounded-2xl border border-[rgba(24,224,255,.28)] bg-[rgba(24,224,255,.04)] shadow-[0_0_60px_rgba(24,224,255,.28)]">
+        <div className="absolute inset-0 overflow-hidden rounded-2xl border border-[rgba(24,224,255,.28)] bg-[rgba(24,224,255,.04)] shadow-[inset_0_0_18px_rgba(24,224,255,.08)]">
           <div
             className="absolute inset-0"
             style={{
@@ -562,10 +606,7 @@ function AnalyzingPanel({ noun }: { noun: string }) {
         <span className="dpx-reticle absolute -bottom-1 -right-1 h-4 w-4 border-b-2 border-r-2 border-[var(--cyan)]" />
       </div>
 
-      <div className="font-brand text-[11px] font-bold uppercase tracking-[.24em] text-[var(--cyan)]">
-        Analyzing {noun}
-      </div>
-      <h2 className="font-brand mt-2 text-2xl font-black">Running Dragon Pixel review</h2>
+      <h2 className="font-brand mt-2 text-2xl font-semibold">Running Dragon Pixel review</h2>
 
       <ul className="mt-7 w-full max-w-xs list-none space-y-2.5 text-left">
         {checks.map((c, i) => (
@@ -584,7 +625,7 @@ function AnalyzingPanel({ noun }: { noun: string }) {
         ))}
       </ul>
 
-      <div className="font-brand mt-6 text-[12px] font-semibold uppercase tracking-[.16em] text-[var(--muted)]">
+      <div className="mt-6 text-[12px] font-semibold text-[var(--muted)]">
         Building review…
       </div>
       <div className="relative mt-3 h-1 w-48 overflow-hidden rounded-full bg-white/10">
@@ -609,7 +650,6 @@ export default function Home() {
   const [risk, setRisk] = useState<ConversionRisk | null>(null);
   const [impact, setImpact] = useState<StoreImpact | null>(null);
   const [decision, setDecision] = useState<ShipDecision | null>(null);
-  const [reviewNoun, setReviewNoun] = useState("");
   const [summaryLine, setSummaryLine] = useState("");
   const [strengths, setStrengths] = useState<string[]>([]);
   const [weaknesses, setWeaknesses] = useState<string[]>([]);
@@ -621,8 +661,6 @@ export default function Home() {
   const [emotion, setEmotion] = useState<EmotionReads | null>(null);
   const [error, setError] = useState("");
   const [dragOver, setDragOver] = useState(false);
-  const [email, setEmail] = useState("");
-  const [helpStatus, setHelpStatus] = useState("");
 
   const inputRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
@@ -762,7 +800,6 @@ export default function Home() {
     setRisk(null);
     setImpact(null);
     setDecision(null);
-    setReviewNoun("");
     setSummaryLine("");
     setStrengths([]);
     setWeaknesses([]);
@@ -772,7 +809,6 @@ export default function Home() {
     setClick(null);
     setGameplay(null);
     setEmotion(null);
-    setHelpStatus("");
 
     try {
       const res = await fetch("/api/analyze", { method: "POST", body: fd });
@@ -797,7 +833,6 @@ export default function Home() {
       setRisk(data.calculated?.conversionRisk ?? null);
       setImpact(data.calculated?.storeImpact ?? null);
       setDecision(data.calculated?.decision ?? null);
-      setReviewNoun(data.calculated?.reviewNoun ?? "");
       setSummaryLine(data.calculated?.summaryLine ?? "");
       setStrengths(data.calculated?.strengths ?? []);
       setWeaknesses(data.calculated?.weaknesses ?? []);
@@ -814,33 +849,6 @@ export default function Home() {
     }
   }
 
-  /* ---------- lead capture ---------- */
-  async function requestHelp() {
-    if (!email.trim()) {
-      setHelpStatus("Enter your email so we can reach you.");
-      return;
-    }
-    setHelpStatus("Sending…");
-    try {
-      const summary = [
-        `Launch score: ${score ?? "—"}/100 (${decision?.label || verdict})`,
-        summaryLine && `Reason: ${summaryLine}`,
-        topFixes.length > 0 &&
-          `Top fixes:\n${topFixes.map((f, i) => `${i + 1}. ${f.action}${f.change ? ` — ${f.change}` : ""}`).join("\n")}`,
-      ]
-        .filter(Boolean)
-        .join("\n");
-      const res = await fetch(FORMSPREE, {
-        method: "POST",
-        headers: { Accept: "application/json" },
-        body: JSON.stringify({ email, verdict, summary }),
-      });
-      setHelpStatus(res.ok ? "Sent — we'll be in touch." : "Something went wrong. Try again.");
-    } catch {
-      setHelpStatus("Couldn't send right now. Try again.");
-    }
-  }
-
   /* ---------- reset for a fresh run ---------- */
   function reset() {
     assets.forEach((a) => URL.revokeObjectURL(a.url));
@@ -854,7 +862,6 @@ export default function Home() {
     setRisk(null);
     setImpact(null);
     setDecision(null);
-    setReviewNoun("");
     setSummaryLine("");
     setStrengths([]);
     setWeaknesses([]);
@@ -865,8 +872,6 @@ export default function Home() {
     setGameplay(null);
     setEmotion(null);
     setError("");
-    setHelpStatus("");
-    setEmail("");
   }
 
   const hasUsable = assets.some((a) => !a.error && !a.overflow);
@@ -889,12 +894,6 @@ export default function Home() {
     impact?.tone === "good" ? "var(--green)" : impact?.tone === "bad" ? "var(--magenta)" : "var(--gold)";
   const decisionTone =
     decision?.tone === "good" ? "var(--green)" : decision?.tone === "bad" ? "var(--magenta)" : "var(--gold)";
-  const loadingNoun = assets.some((a) => a.role === "icon" && !a.error)
-    ? "icon"
-    : assets.some((a) => a.role === "screenshot" && !a.error && !a.overflow)
-    ? "screenshots"
-    : "assets";
-
   return (
     <main className="relative z-[1] mx-auto w-[min(1060px,calc(100%-44px))] pb-16">
       {/* header */}
@@ -911,15 +910,15 @@ export default function Home() {
   width={300}
   height={64}
   className="h-12 w-auto opacity-95 md:h-14"
-/>
+          />
         </a>
         <h1
-          className="font-brand text-[clamp(40px,7vw,72px)] font-black leading-[.98] text-transparent bg-clip-text"
+          className="font-brand text-[clamp(40px,7vw,72px)] font-bold leading-[.98] text-transparent bg-clip-text"
           style={{ backgroundImage: "linear-gradient(180deg,#fff,#cfe9ff 70%,#9fd2ff)" }}
         >
           Store Analyzer
         </h1>
-        <p className="mx-auto mt-3 max-w-[560px] text-[clamp(16px,2vw,19px)] font-semibold text-[var(--muted)]">
+        <p className="mx-auto mt-3 max-w-[560px] text-[clamp(16px,2vw,19px)] font-medium text-[var(--text-2)]">
           Get a conversion review before you spend on launch.
         </p>
       </header>
@@ -927,7 +926,7 @@ export default function Home() {
       {!hasResult && !loading && (
       <div className="mt-10 grid grid-cols-1 items-start gap-5 md:grid-cols-[1.05fr_.95fr]">
         {/* LEFT — upload */}
-        <section className="relative overflow-hidden rounded-3xl border border-[var(--edge)] p-6 shadow-[0_22px_70px_rgba(0,0,0,.4)]"
+        <section className="relative overflow-hidden rounded-2xl border border-[var(--edge)] p-6 shadow-[0_8px_24px_rgba(0,0,0,.18)]"
           style={{ background: "linear-gradient(160deg,rgba(18,18,34,.96),rgba(7,8,18,.96))" }}>
           <div
             className="dpx-drift pointer-events-none absolute -inset-[40%] z-0"
@@ -937,10 +936,10 @@ export default function Home() {
             }}
           />
           <div className="relative z-[1]">
-            <span className="font-brand mb-3 inline-block text-[11px] font-bold uppercase tracking-[.2em] text-[var(--cyan)]">
-              Free store audit
-            </span>
-            <h2 className="font-brand text-[22px] font-bold">Upload store assets</h2>
+            <div className="dpx-kicker mb-3 w-full justify-center" data-tone="cyan" data-balanced="true">
+              Free asset review
+            </div>
+            <h2 className="font-brand text-[22px] font-semibold">Upload store assets</h2>
             <p className="mb-4 mt-1.5 text-[15px] font-semibold text-[var(--muted)]"></p>
 
             {/* dropzone */}
@@ -1051,7 +1050,7 @@ export default function Home() {
             <button
               onClick={analyze}
               disabled={!hasUsable || loading}
-              className="font-brand mt-4 min-h-[58px] w-full rounded-2xl text-sm font-black uppercase tracking-[.1em] text-[#05121a] transition-all hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:grayscale"
+              className="font-brand mt-4 min-h-[58px] w-full rounded-2xl text-sm font-semibold text-[#05121a] transition-all hover:-translate-y-0.5 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-40 disabled:grayscale"
               style={{
                 background: "linear-gradient(120deg,var(--cyan),var(--magenta))",
                 boxShadow: "0 0 28px rgba(24,224,255,.24),0 16px 44px rgba(255,61,180,.14)",
@@ -1065,7 +1064,7 @@ export default function Home() {
 {/* RIGHT — result / sample */}
 <aside>
   <div
-    className="relative rounded-3xl border border-[rgba(24,224,255,.28)] p-6 shadow-[0_22px_70px_rgba(0,0,0,.4)]"
+    className="relative rounded-2xl border border-[rgba(24,224,255,.28)] p-6 shadow-[0_8px_24px_rgba(0,0,0,.18)]"
     style={{
       background:
         "radial-gradient(circle at 16% 12%,rgba(24,224,255,.16),transparent 40%),radial-gradient(circle at 86% 84%,rgba(255,61,180,.14),transparent 42%),linear-gradient(160deg,rgba(15,22,42,.98),rgba(9,8,22,.96))",
@@ -1075,7 +1074,7 @@ export default function Home() {
 <div className="flex min-h-[300px] flex-col items-center justify-center px-4 py-9 text-center">
   {/* scanner window — sweeping scan line over the brand grid, reticle corners */}
   <div className="relative mb-7 h-28 w-28">
-    <div className="absolute inset-0 overflow-hidden rounded-2xl border border-[rgba(24,224,255,.28)] bg-[rgba(24,224,255,.04)] shadow-[0_0_60px_rgba(24,224,255,.28)]">
+    <div className="absolute inset-0 overflow-hidden rounded-2xl border border-[rgba(24,224,255,.28)] bg-[rgba(24,224,255,.04)] shadow-[inset_0_0_18px_rgba(24,224,255,.08)]">
       <div
         className="absolute inset-0"
         style={{
@@ -1105,7 +1104,7 @@ export default function Home() {
     <span className="dpx-reticle absolute -bottom-1 -right-1 h-4 w-4 border-b-2 border-r-2 border-[var(--cyan)]" />
   </div>
 
-  <h2 className="font-brand text-2xl font-black">Running Dragon Pixel review</h2>
+  <h2 className="font-brand text-2xl font-semibold">Running Dragon Pixel review</h2>
 
   <p className="mt-3 max-w-xs text-sm font-semibold leading-6 text-[var(--muted)]">
     Scanning shelf readability, click pull, gameplay clarity, and marketing confidence.
@@ -1121,21 +1120,15 @@ export default function Home() {
 </div>
     ) : (
       <>
-        <div className="mb-2 flex items-center justify-between">
-          <span className="font-brand text-[11px] font-bold uppercase tracking-[.2em] text-[var(--cyan)]">
-            {hasResult ? "Your result" : "Sample output"}
-          </span>
-
-          {mode && (
-            <span className="rounded-full border border-[rgba(24,224,255,.3)] bg-[rgba(24,224,255,.08)] px-2.5 py-1 text-[11px] font-bold uppercase tracking-wide text-[var(--cyan)]">
-              {mode}
-            </span>
-          )}
+        <div className="mb-3 flex justify-center">
+          <div className="dpx-kicker" data-tone="cyan" data-balanced="true">
+            Example readout
+          </div>
         </div>
 
         <div className="my-2 grid grid-cols-2 gap-3.5">
           <div className="rounded-2xl border border-[var(--edge)] bg-white/[.03] px-4 py-3.5">
-            <div className="font-brand text-[10px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">
+            <div className="text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
               Launch score
             </div>
             <div className="font-score mt-1 text-[38px] font-black leading-[1.05] text-[var(--cyan)]">
@@ -1145,7 +1138,7 @@ export default function Home() {
           </div>
 
           <div className="rounded-2xl border border-[var(--edge)] bg-white/[.03] px-4 py-3.5">
-            <div className="font-brand text-[10px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">
+            <div className="text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
               Potential
             </div>
             <div className="font-score mt-1 text-[38px] font-black leading-[1.05] text-[var(--gold)]">
@@ -1202,7 +1195,7 @@ export default function Home() {
       {/* loading — replaces the whole panel */}
       {loading && (
         <div className="mt-10">
-          <AnalyzingPanel noun={loadingNoun} />
+          <AnalyzingPanel />
         </div>
       )}
 
@@ -1214,17 +1207,17 @@ export default function Home() {
             onClick={reset}
             className="dpx-reupload group flex items-center justify-between rounded-2xl border border-[var(--edge)] bg-white/[.03] px-5 py-3 text-left transition hover:border-[rgba(24,224,255,.4)]"
           >
-            <span className="font-brand text-[12px] font-bold uppercase tracking-[.14em] text-[var(--muted)] group-hover:text-[var(--cyan)]">
+            <span className="text-[12px] font-semibold text-[var(--muted)] group-hover:text-[var(--cyan)]">
               ↻ Analyze another asset
             </span>
-            <span className="font-brand text-[11px] font-semibold uppercase tracking-[.12em] text-[var(--faint)]">
+            <span className="text-[11px] font-medium text-[var(--faint)]">
               {mode}
             </span>
           </button>
 
           {/* HERO — review noun + score + ship decision + why */}
           <div
-            className="relative overflow-hidden rounded-3xl border p-7 shadow-[0_22px_70px_rgba(0,0,0,.45)] md:p-9"
+            className="relative overflow-hidden rounded-2xl border p-7 shadow-[0_8px_24px_rgba(0,0,0,.2)] md:p-9"
             style={{
               borderColor:
                 decision?.tone === "good"
@@ -1236,8 +1229,8 @@ export default function Home() {
                 "radial-gradient(600px 240px at 12% -20%,rgba(24,224,255,.12),transparent 60%),linear-gradient(160deg,rgba(15,19,34,.97),rgba(8,9,18,.97))",
             }}
           >
-            <div className="font-brand mb-3 text-[12px] font-bold uppercase tracking-[.24em] text-[var(--cyan)]">
-              {reviewNoun || "Asset"} review
+            <div className="dpx-kicker mb-5" data-tone="gold">
+              Your result
             </div>
             <div className="flex flex-wrap items-end gap-x-7 gap-y-3">
               <div
@@ -1253,7 +1246,7 @@ export default function Home() {
               <div className="pb-2">
                 {decision && (
                   <div
-                    className="font-brand text-[clamp(24px,4.6vw,40px)] font-black leading-[.95]"
+                    className="font-brand text-[clamp(24px,4.6vw,40px)] font-bold leading-[.95]"
                     style={{ color: decisionTone }}
                   >
                     {decision.label}
@@ -1271,7 +1264,7 @@ export default function Home() {
             </div>
             {summaryLine && (
               <p className="mt-5 max-w-2xl text-[16px] font-semibold leading-snug text-[var(--foreground)]">
-                <span className="font-brand text-[11px] uppercase tracking-[.16em] text-[var(--faint)]">Reason </span>
+                <span className="text-[11px] uppercase tracking-[.12em] text-[var(--faint)]">Reason </span>
                 {summaryLine}
               </p>
             )}
@@ -1302,8 +1295,8 @@ export default function Home() {
           {/* WILL PEOPLE CLICK — compact risk line */}
           {risk && (
             <div
-              className="rounded-3xl border border-[var(--edge)] p-6"
-              style={{ background: "linear-gradient(160deg,rgba(18,18,34,.96),rgba(7,8,18,.96))" }}
+              className="rounded-2xl border border-[var(--edge)] p-6"
+              style={{ background: "linear-gradient(160deg,#11182a,#070b14)" }}
             >
               <div className="flex flex-wrap items-center justify-between gap-3">
                 <span className="font-brand text-[15px] font-black">Conversion risk</span>
@@ -1312,7 +1305,7 @@ export default function Home() {
                 </span>
               </div>
               <div className="mt-3 flex items-center gap-3">
-                <span className="font-brand text-[9px] font-bold uppercase tracking-[.14em] text-[var(--faint)]">
+                <span className="text-[9px] font-semibold uppercase tracking-[.12em] text-[var(--faint)]">
                   Click → convert
                 </span>
                 <div className="relative h-2 flex-1 overflow-hidden rounded-full border border-[var(--edge)] bg-black/40">
@@ -1331,7 +1324,7 @@ export default function Home() {
           {/* TOP 3 ACTIONS */}
           {topFixes.length > 0 && (
             <div
-              className="rounded-3xl border-[1.5px] p-6"
+              className="rounded-2xl border-[1.5px] p-6"
               style={{
                 borderColor: "rgba(105,255,0,.4)",
                 background:
@@ -1346,7 +1339,7 @@ export default function Home() {
                   ? "Fix before launch"
                   : "What to fix"}
               </div>
-              <h2 className="font-brand mt-1 text-[22px] font-black">Top 3 actions</h2>
+              <h2 className="font-brand mt-1 text-[22px] font-semibold">Top 3 actions</h2>
               <p className="mb-5 mt-1.5 text-sm font-semibold text-[var(--muted)]">
                 Ranked by impact — start at the top.
               </p>
@@ -1363,13 +1356,13 @@ export default function Home() {
                       <div className="text-[15px] font-bold leading-snug">{fix.action}</div>
                       {fix.why && (
                         <p className="mt-1.5 text-[13.5px] font-semibold leading-snug text-[var(--muted)]">
-                          <span className="font-brand text-[10px] uppercase tracking-[.12em] text-[var(--faint)]">Why </span>
+                          <span className="text-[10px] uppercase tracking-[.12em] text-[var(--faint)]">Why </span>
                           {fix.why}
                         </p>
                       )}
                       {fix.change && (
                         <p className="mt-1 text-[13.5px] font-semibold leading-snug text-[var(--foreground)]">
-                          <span className="font-brand text-[10px] uppercase tracking-[.12em] text-[var(--green)]">Change </span>
+                          <span className="text-[10px] uppercase tracking-[.12em] text-[var(--green)]">Change </span>
                           {fix.change}
                         </p>
                       )}
@@ -1382,8 +1375,8 @@ export default function Home() {
 
           {/* ADVANCED ANALYSIS — everything detailed, collapsed */}
           <details
-            className="dpx-details group rounded-3xl border border-[var(--edge)]"
-            style={{ background: "linear-gradient(160deg,rgba(18,18,34,.96),rgba(7,8,18,.96))" }}
+            className="dpx-details group rounded-2xl border border-[var(--edge)]"
+            style={{ background: "linear-gradient(160deg,#11182a,#070b14)" }}
           >
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-6 py-5 transition hover:bg-white/[.02]">
               <span>
@@ -1405,7 +1398,7 @@ export default function Home() {
               {/* category bars — weakest first */}
               {orderedBars.length > 0 && (
                 <div>
-                  <div className="mb-4 font-brand text-[11px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">
+                  <div className="mb-4 text-[11px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
                     Score breakdown · weakest first
                   </div>
                   <div className="flex flex-col gap-3">
@@ -1413,7 +1406,7 @@ export default function Home() {
                       const v = scores?.[row.key as ScoreKey];
                       return (
                         <div key={row.key} className="flex items-center gap-3">
-                          <span className="font-brand w-4 flex-none text-[11px] font-black text-[var(--faint)]">
+                          <span className="w-4 flex-none text-[11px] font-semibold text-[var(--faint)]">
                             {i + 1}
                           </span>
                           <span className="w-[122px] flex-none text-[13px] font-semibold text-[var(--muted)]">
@@ -1456,7 +1449,7 @@ export default function Home() {
                   click.urgency.length > 0 ||
                   click.blockers.length > 0) && (
                   <div>
-                    <div className="mb-3 font-brand text-[11px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">
+                    <div className="mb-3 text-[11px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
                       Click pull — what pulls the tap
                     </div>
                     <ChipGroup label="Curiosity" items={click.curiosity} tone="cyan" />
@@ -1470,7 +1463,7 @@ export default function Home() {
               {gameplayAssessed ? (
                 (gameplay?.clear.length || gameplay?.unclear.length) ? (
                   <div>
-                    <div className="mb-3 font-brand text-[11px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">
+                    <div className="mb-3 text-[11px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
                       Gameplay clarity — reads in 3 seconds?
                     </div>
                     <ChecklistCols
@@ -1483,11 +1476,11 @@ export default function Home() {
                 ) : null
               ) : (
                 <div>
-                  <div className="mb-3 font-brand text-[11px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">
+                  <div className="mb-3 text-[11px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
                     Gameplay clarity
                   </div>
-                  <div className="rounded-xl border border-dashed border-[var(--edge)] bg-white/[.02] px-4 py-3.5">
-                    <span className="font-brand text-[12px] font-bold uppercase tracking-[.14em] text-[var(--faint)]">
+                  <div className="rounded-xl border border-dashed border-[var(--edge)] bg-[#0d1423] px-4 py-3.5">
+                    <span className="text-[12px] font-semibold uppercase tracking-[.12em] text-[var(--faint)]">
                       Not assessed
                     </span>
                     <p className="mt-1.5 text-[13.5px] font-semibold leading-snug text-[var(--muted)]">
@@ -1501,7 +1494,7 @@ export default function Home() {
               {/* emotional signal */}
               {emotion && (emotion.present.length > 0 || emotion.missing.length > 0) && (
                 <div>
-                  <div className="mb-3 font-brand text-[11px] font-bold uppercase tracking-[.18em] text-[var(--muted)]">
+                  <div className="mb-3 text-[11px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
                     Emotional signal
                   </div>
                   <ChecklistCols
@@ -1515,81 +1508,128 @@ export default function Home() {
             </div>
           </details>
 
-          {/* lead capture */}
-          <div className="rounded-2xl border border-[rgba(24,224,255,.28)] bg-[rgba(24,224,255,.05)] p-5">
-            <h3 className="font-brand text-base font-bold">Want Dragon Pixel to fix the weak spots?</h3>
-            <p className="mb-3 mt-1 text-sm font-semibold text-[var(--muted)]">
-              Send us your email with this review and we&apos;ll quote a focused icon, screenshot, or store-page polish pass.
-            </p>
-            <div className="flex flex-wrap gap-2.5">
-              <input
-                type="email"
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="your@email.com"
-                className="min-w-[220px] flex-1 rounded-xl border border-[var(--edge)] bg-black/30 px-4 py-3 text-sm font-semibold outline-none focus:border-[var(--cyan)]"
-              />
-              <button
-                onClick={requestHelp}
-                className="font-brand rounded-xl border border-[rgba(24,224,255,.4)] bg-[rgba(24,224,255,.12)] px-5 py-3 text-xs font-black uppercase tracking-[.08em] text-[var(--cyan)] transition hover:bg-[rgba(24,224,255,.2)]"
-              >
-                Request help
-              </button>
+          {/* paid offer — diagnosis-driven store-asset packs */}
+          <div
+            className="rounded-2xl border-[1.5px] p-6"
+            style={{
+              borderColor: "rgba(24,224,255,.34)",
+              background:
+                "radial-gradient(600px 260px at 50% -20%,rgba(24,224,255,.1),transparent 60%),linear-gradient(160deg,rgba(15,22,42,.96),rgba(8,9,18,.96))",
+            }}
+          >
+            <div className="dpx-kicker" data-tone="magenta">
+              Action plan
             </div>
-            {helpStatus && <p className="mt-2 text-sm font-semibold text-[var(--muted)]">{helpStatus}</p>}
+            <h2 className="font-brand mt-1 text-[22px] font-semibold">
+              Have Dragon Pixel fix exactly what this review flagged
+            </h2>
+            <p className="mb-5 mt-1.5 text-sm font-semibold text-[var(--muted)]">
+              We rebuild your store assets from your real game footage, correcting the weak spots
+              above. Delivered in 24 hours.
+            </p>
+
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              {PACKS.map((p) => (
+                <div
+                  key={p.id}
+                  className="flex flex-col rounded-2xl border p-5"
+                  style={{
+                    borderColor: p.flagship ? "rgba(255,194,61,.4)" : "var(--edge)",
+                    background: p.flagship ? "#21190c" : "#0d1423",
+                  }}
+                >
+                  <div className="flex items-baseline justify-between gap-2">
+                    <span className="font-brand text-[15px] font-semibold">{p.name}</span>
+                    <span
+                      className="font-score text-[22px] font-black"
+                      style={{ color: p.flagship ? "var(--gold)" : "var(--cyan)" }}
+                    >
+                      {p.price}
+                    </span>
+                  </div>
+                  <p className="mt-1 text-[12.5px] font-semibold text-[var(--faint)]">{p.anchor}</p>
+                  <ul className="mt-3 flex flex-1 flex-col gap-1.5">
+                    {p.bullets.map((b) => (
+                      <li
+                        key={b}
+                        className="flex items-start gap-2 text-[13px] font-semibold text-[var(--muted)]"
+                      >
+                        <span className="font-brand mt-px flex-none font-black text-[var(--green)]">✓</span>
+                        <span className="leading-snug">{b}</span>
+                      </li>
+                    ))}
+                  </ul>
+                  <Link
+                    href="/pricing"
+                    className="font-brand mt-4 inline-flex min-h-[46px] w-full items-center justify-center rounded-xl text-center text-[13px] font-semibold transition hover:-translate-y-0.5 hover:brightness-110"
+                    style={
+                      p.flagship
+                        ? { background: "linear-gradient(120deg,var(--gold),#ff8a3d)", color: "#1a1205" }
+                        : { background: "linear-gradient(120deg,var(--cyan),var(--magenta))", color: "#05121a" }
+                    }
+                  >
+                    {p.cta}
+                  </Link>
+                </div>
+              ))}
+            </div>
+
+            <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
+              <span className="text-[12px] font-semibold text-[var(--faint)]">
+                Paddle checkout is being connected after domain verification. Paid beta delivery
+                starts from the pricing and contact pages.
+              </span>
+            </div>
           </div>
         </section>
       )}
 
-      {/* footer — full-width top rule separates it from the body, no card box */}
-      <footer className="mt-16 rounded-b-3xl border-t border-white/12 bg-white/[0.02] px-6 pt-10 pb-7">
-        <div className="grid grid-cols-1 gap-9 md:grid-cols-2 md:items-start">
-          {/* brand */}
-          <div>
-            <Image
-              src="/logo.png"
-              alt="Dragon Pixel Studio"
-              width={240}
-              height={52}
-              className="h-11 w-auto opacity-100"
-            />
-            <p className="mt-3 max-w-xs text-[13.5px] leading-6 text-[var(--muted)]">
-              1068 Beijing West Road, Jingan Shanghai.
-            </p>
+      <section className="mt-24 border-t border-white/[0.08] pt-10">
+        <div className="max-w-2xl">
+          <div className="dpx-kicker" data-tone="cyan">
+            Review workflow
           </div>
+          <h2 className="font-brand mt-2 text-[28px] font-semibold text-[var(--foreground)]">
+            A simple review flow
+          </h2>
+          <p className="mt-3 text-[15px] leading-7 text-[var(--text-2)]">
+            Upload your store assets, get an instant AI review, and upgrade to a deeper paid report
+            if you want direct hands-on help.
+          </p>
+        </div>
 
-          {/* how it works */}
-          <div>
-            <h4 className="font-brand text-[11px] font-bold uppercase tracking-[.18em] text-[var(--cyan)]">
-              How it works
-            </h4>
-            <div className="mt-3.5 space-y-3 text-[13.5px] leading-6 text-[var(--muted)]">
-              <p>
-                <span className="font-bold text-[var(--foreground)]">Scoring engine - </span>
-                AI reads the visuals, Dragon Pixel scores clarity, click pull, polish and conversion
-                risk with our algorithm.
-              </p>
-              <p>
-                <span className="font-bold text-[var(--foreground)]">Upload privacy - </span>
-                Files are used only for this review request. They&apos;re not stored by the analyzer.
-              </p>
+        <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-3">
+          {[
+            {
+              step: "01",
+              title: "Upload assets",
+              text: "Add your icon, screenshots, and other store creative for review.",
+            },
+            {
+              step: "02",
+              title: "Get an AI review",
+              text: "Dragon Pixel scores clarity, click pull, polish, and conversion risk.",
+            },
+            {
+              step: "03",
+              title: "Upgrade if needed",
+              text: "Order a paid report or store-asset pack if you want manual help.",
+            },
+          ].map((item) => (
+            <div key={item.step} className="rounded-2xl border border-white/[0.08] bg-[#0d1423] p-5">
+              <div className="text-[12px] font-semibold text-[var(--text-3)]">
+                {item.step}
+              </div>
+              <h3 className="font-brand mt-3 text-[18px] font-semibold text-[var(--foreground)]">
+                {item.title}
+              </h3>
+              <p className="mt-2 text-[14px] leading-6 text-[var(--text-2)]">{item.text}</p>
             </div>
-          </div>
+          ))}
         </div>
+      </section>
 
-        {/* bottom bar */}
-        <div className="mt-10 flex flex-col items-center justify-between gap-2 border-t border-white/10 pt-5 text-[12.5px] font-semibold text-[var(--faint)] md:flex-row">
-          <span>© 2026 Dragon Pixel Studio. All rights reserved.</span>
-          <a
-            href="https://www.dragonpixelstudio.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="text-[var(--cyan)] transition hover:underline"
-          >
-            dragonpixelstudio.com
-          </a>
-        </div>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

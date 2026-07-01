@@ -2,15 +2,20 @@
 
 /* Brand tokens — kept in sync with the marketing site for one identity. */
 :root {
-  --background: #07070d;
-  --foreground: #fbfcff;
-  --muted: #c9cfe2;
-  --faint: #9aa3bd;
-  --cyan: #18e0ff;
-  --magenta: #ff3db4;
+  --background: #070b12;
+  --surface: rgba(255, 255, 255, 0.03);
+  --surface-2: rgba(255, 255, 255, 0.045);
+  --foreground: #f4f7fb;
+  --text-2: #c8d1e0;
+  --text-3: #8f9ab0;
+  --text-4: #657089;
+  --muted: var(--text-2);
+  --faint: var(--text-3);
+  --cyan: #18d7ff;
+  --magenta: #ff46b8;
   --gold: #ffc23d;
   --green: #69ff00;
-  --edge: rgba(255, 255, 255, 0.1);
+  --edge: rgba(255, 255, 255, 0.08);
 }
 
 @theme inline {
@@ -25,7 +30,7 @@ body {
   background:
     radial-gradient(circle at 80% 8%, rgba(255, 61, 180, 0.1), transparent 34%),
     radial-gradient(circle at 12% 22%, rgba(24, 224, 255, 0.1), transparent 34%),
-    linear-gradient(135deg, #05070d 0%, #0b101c 55%, #05070d 100%);
+    linear-gradient(135deg, var(--background) 0%, #0c1220 55%, #05070d 100%);
   background-attachment: fixed;
   color: var(--foreground);
   font-family: var(--font-body), system-ui, sans-serif;
@@ -66,7 +71,7 @@ body::after {
     );
 }
 
-/* Exo 2 for display headings (use className="font-brand"). */
+/* Sora for display headings and compact UI controls (use className="font-brand"). */
 .font-brand,
 .font-display {
   font-family: var(--font-brand), var(--font-body), system-ui, sans-serif;
@@ -75,6 +80,50 @@ body::after {
 /* Orbitron, scoped to the big score numbers only (className="font-score"). */
 .font-score {
   font-family: var(--font-score), var(--font-brand), system-ui, sans-serif;
+}
+
+.dpx-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.7rem;
+  color: var(--gold);
+  font-family: var(--font-brand), var(--font-body), system-ui, sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  line-height: 1;
+  text-transform: uppercase;
+}
+
+.dpx-kicker::before,
+.dpx-kicker[data-balanced="true"]::after {
+  content: "";
+  display: inline-block;
+  width: 2rem;
+  height: 1px;
+  flex: none;
+  background: linear-gradient(90deg, var(--gold), rgba(255, 255, 255, 0.35));
+  box-shadow: 0 0 12px rgba(255, 194, 61, 0.28);
+}
+
+.dpx-kicker[data-tone="cyan"]::before,
+.dpx-kicker[data-balanced="true"][data-tone="cyan"]::after {
+  background: linear-gradient(90deg, var(--cyan), rgba(255, 255, 255, 0.35));
+  box-shadow: 0 0 12px rgba(24, 215, 255, 0.24);
+}
+
+.dpx-kicker[data-tone="cyan"] {
+  color: var(--cyan);
+}
+
+.dpx-kicker[data-tone="magenta"]::before,
+.dpx-kicker[data-balanced="true"][data-tone="magenta"]::after {
+  background: linear-gradient(90deg, var(--magenta), rgba(255, 255, 255, 0.35));
+  box-shadow: 0 0 12px rgba(255, 70, 184, 0.22);
+}
+
+.dpx-kicker[data-tone="magenta"] {
+  color: var(--magenta);
 }
 
 /* Ambient motion — slow + low, tied to the upload panel and dropzone. */
