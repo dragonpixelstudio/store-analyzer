@@ -3,7 +3,7 @@
 import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
-import { SiteFooter } from "@/app/components/SiteChrome";
+import { SiteNav } from "@/app/components/SiteChrome";
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2 MB
 const MAX_SCREENSHOTS = 3;
@@ -569,7 +569,7 @@ function AnalyzingPanel() {
   const checks = ["Shelf readability", "Click pull", "Genre recognition", "Conversion risk"];
   return (
     <div
-      className="mx-auto flex max-w-xl flex-col items-center rounded-2xl border border-[rgba(24,224,255,.28)] px-6 py-12 text-center shadow-[0_8px_24px_rgba(0,0,0,.2)]"
+      className="mx-auto flex max-w-xl flex-col items-center rounded-2xl border border-[rgba(24,224,255,.28)] px-6 py-12 text-center"
       style={{
         background:
           "radial-gradient(circle at 50% 0%,rgba(24,224,255,.12),transparent 55%),linear-gradient(160deg,rgba(15,22,42,.97),rgba(9,8,22,.97))",
@@ -643,7 +643,6 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [score, setScore] = useState<number | null>(null);
   const [potential, setPotential] = useState<number | null>(null);
-  const [verdict, setVerdict] = useState("");
   const [mode, setMode] = useState("");
   const [scores, setScores] = useState<Partial<Record<ScoreKey, number>> | null>(null);
   const [breakdown, setBreakdown] = useState<BreakdownRow[]>([]);
@@ -653,7 +652,6 @@ export default function Home() {
   const [summaryLine, setSummaryLine] = useState("");
   const [strengths, setStrengths] = useState<string[]>([]);
   const [weaknesses, setWeaknesses] = useState<string[]>([]);
-  const [biggestProblem, setBiggestProblem] = useState("");
   const [topFixes, setTopFixes] = useState<DragonPixelFix[]>([]);
   const [shelf, setShelf] = useState<{ visible: string[]; lost: string[] } | null>(null);
   const [click, setClick] = useState<ClickReads | null>(null);
@@ -666,7 +664,6 @@ export default function Home() {
   const dragDepth = useRef(0);
 
   const launchVal = useCountUp(score);
-  const potentialVal = useCountUp(potential);
 
   /* ---------- asset management ---------- */
   const normalize = useCallback((list: Asset[]): Asset[] => {
@@ -793,7 +790,6 @@ export default function Home() {
     setError("");
     setScore(null);
     setPotential(null);
-    setVerdict("");
     setMode("");
     setScores(null);
     setBreakdown([]);
@@ -803,7 +799,6 @@ export default function Home() {
     setSummaryLine("");
     setStrengths([]);
     setWeaknesses([]);
-    setBiggestProblem("");
     setTopFixes([]);
     setShelf(null);
     setClick(null);
@@ -826,7 +821,6 @@ export default function Home() {
 
       setScore(data.calculated?.launchScore ?? null);
       setPotential(data.calculated?.potentialAfterFixes ?? null);
-      setVerdict(data.verdict || "");
       setMode(data.calculated?.reviewModeLabel || "");
       setScores(data.calculated?.scores ?? null);
       setBreakdown(data.calculated?.breakdown ?? []);
@@ -836,7 +830,6 @@ export default function Home() {
       setSummaryLine(data.calculated?.summaryLine ?? "");
       setStrengths(data.calculated?.strengths ?? []);
       setWeaknesses(data.calculated?.weaknesses ?? []);
-      setBiggestProblem(data.calculated?.biggestProblem ?? "");
       setTopFixes(data.calculated?.topFixes ?? []);
       setShelf(data.shelf ?? null);
       setClick(data.click ?? null);
@@ -855,7 +848,6 @@ export default function Home() {
     setAssets([]);
     setScore(null);
     setPotential(null);
-    setVerdict("");
     setMode("");
     setScores(null);
     setBreakdown([]);
@@ -865,7 +857,6 @@ export default function Home() {
     setSummaryLine("");
     setStrengths([]);
     setWeaknesses([]);
-    setBiggestProblem("");
     setTopFixes([]);
     setShelf(null);
     setClick(null);
@@ -912,8 +903,9 @@ export default function Home() {
   className="h-12 w-auto opacity-95 md:h-14"
           />
         </a>
+        <SiteNav />
         <h1
-          className="font-brand text-[clamp(40px,7vw,72px)] font-bold leading-[.98] text-transparent bg-clip-text"
+          className="font-brand mt-8 text-[clamp(40px,7vw,72px)] font-bold leading-[.98] text-transparent bg-clip-text"
           style={{ backgroundImage: "linear-gradient(180deg,#fff,#cfe9ff 70%,#9fd2ff)" }}
         >
           Store Analyzer
@@ -924,10 +916,12 @@ export default function Home() {
       </header>
 
       {!hasResult && !loading && (
-      <div className="mt-10 grid grid-cols-1 items-start gap-5 md:grid-cols-[1.05fr_.95fr]">
-        {/* LEFT — upload */}
-        <section className="relative overflow-hidden rounded-2xl border border-[var(--edge)] p-6 shadow-[0_8px_24px_rgba(0,0,0,.18)]"
-          style={{ background: "linear-gradient(160deg,rgba(18,18,34,.96),rgba(7,8,18,.96))" }}>
+      <>
+        {/* HERO — the upload is the product */}
+        <section
+          className="relative mx-auto mt-10 w-full max-w-[780px] overflow-hidden rounded-3xl border border-[rgba(24,224,255,.24)] p-6 md:p-9"
+          style={{ background: "linear-gradient(160deg,rgba(18,18,34,.97),rgba(7,8,18,.97))" }}
+        >
           <div
             className="dpx-drift pointer-events-none absolute -inset-[40%] z-0"
             style={{
@@ -936,11 +930,18 @@ export default function Home() {
             }}
           />
           <div className="relative z-[1]">
-            <div className="dpx-kicker mb-3 w-full justify-center" data-tone="cyan" data-balanced="true">
-              Free asset review
+            <div className="mb-4 flex justify-center">
+              <div className="dpx-kicker" data-tone="cyan">
+                Free asset review
+              </div>
             </div>
-            <h2 className="font-brand text-[22px] font-semibold">Upload store assets</h2>
-            <p className="mb-4 mt-1.5 text-[15px] font-semibold text-[var(--muted)]"></p>
+            <h2 className="font-brand text-center text-[clamp(24px,3.4vw,32px)] font-semibold">
+              Upload store assets
+            </h2>
+            <p className="mx-auto mb-6 mt-2 max-w-[52ch] text-center text-[15px] font-medium leading-6 text-[var(--text-2)]">
+              Drop your icon, screenshots, or Steam capsule — get a scored conversion readout in
+              seconds.
+            </p>
 
             {/* dropzone */}
             <label
@@ -949,7 +950,7 @@ export default function Home() {
               onDragLeave={onDragLeave}
               onDrop={onDrop}
               aria-disabled={loading}
-              className={`dpx-pulse relative flex flex-col items-center justify-center gap-2 rounded-2xl border-[1.5px] border-dashed px-5 py-8 text-center transition-all ${
+              className={`dpx-pulse relative flex flex-col items-center justify-center gap-2 rounded-2xl border-[1.5px] border-dashed px-6 py-12 text-center transition-all ${
                 loading
                   ? "pointer-events-none cursor-not-allowed border-[var(--edge)] bg-white/[.02] opacity-50"
                   : dragOver
@@ -1061,135 +1062,77 @@ export default function Home() {
           </div>
         </section>
 
-{/* RIGHT — result / sample */}
-<aside>
-  <div
-    className="relative rounded-2xl border border-[rgba(24,224,255,.28)] p-6 shadow-[0_8px_24px_rgba(0,0,0,.18)]"
-    style={{
-      background:
-        "radial-gradient(circle at 16% 12%,rgba(24,224,255,.16),transparent 40%),radial-gradient(circle at 86% 84%,rgba(255,61,180,.14),transparent 42%),linear-gradient(160deg,rgba(15,22,42,.98),rgba(9,8,22,.96))",
-    }}
-  >
-    {loading ? (
-<div className="flex min-h-[300px] flex-col items-center justify-center px-4 py-9 text-center">
-  {/* scanner window — sweeping scan line over the brand grid, reticle corners */}
-  <div className="relative mb-7 h-28 w-28">
-    <div className="absolute inset-0 overflow-hidden rounded-2xl border border-[rgba(24,224,255,.28)] bg-[rgba(24,224,255,.04)] shadow-[inset_0_0_18px_rgba(24,224,255,.08)]">
-      <div
-        className="absolute inset-0"
-        style={{
-          background:
-            "radial-gradient(circle at 30% 30%,rgba(24,224,255,.22),transparent 55%),radial-gradient(circle at 72% 74%,rgba(255,61,180,.2),transparent 55%)",
-        }}
-      />
-      <div
-        className="absolute inset-0 opacity-40"
-        style={{
-          backgroundImage:
-            "linear-gradient(rgba(255,255,255,.08) 1px,transparent 1px),linear-gradient(90deg,rgba(255,255,255,.08) 1px,transparent 1px)",
-          backgroundSize: "14px 14px",
-        }}
-      />
-      <div
-        className="dpx-scanline absolute inset-x-0 top-0 h-8"
-        style={{
-          background: "linear-gradient(180deg,transparent,rgba(24,224,255,.55),transparent)",
-          boxShadow: "0 0 20px rgba(24,224,255,.6)",
-        }}
-      />
-    </div>
-    <span className="dpx-reticle absolute -left-1 -top-1 h-4 w-4 border-l-2 border-t-2 border-[var(--cyan)]" />
-    <span className="dpx-reticle absolute -right-1 -top-1 h-4 w-4 border-r-2 border-t-2 border-[var(--cyan)]" />
-    <span className="dpx-reticle absolute -bottom-1 -left-1 h-4 w-4 border-b-2 border-l-2 border-[var(--cyan)]" />
-    <span className="dpx-reticle absolute -bottom-1 -right-1 h-4 w-4 border-b-2 border-r-2 border-[var(--cyan)]" />
-  </div>
-
-  <h2 className="font-brand text-2xl font-semibold">Running Dragon Pixel review</h2>
-
-  <p className="mt-3 max-w-xs text-sm font-semibold leading-6 text-[var(--muted)]">
-    Scanning shelf readability, click pull, gameplay clarity, and marketing confidence.
-  </p>
-
-  {/* indeterminate progress shimmer */}
-  <div className="relative mt-5 h-1 w-48 overflow-hidden rounded-full bg-white/10">
-    <div
-      className="dpx-bar absolute inset-y-0 w-1/3 rounded-full"
-      style={{ background: "linear-gradient(90deg,transparent,var(--cyan),transparent)" }}
-    />
-  </div>
-</div>
-    ) : (
-      <>
-        <div className="mb-3 flex justify-center">
-          <div className="dpx-kicker" data-tone="cyan" data-balanced="true">
-            Example readout
-          </div>
-        </div>
-
-        <div className="my-2 grid grid-cols-2 gap-3.5">
-          <div className="rounded-2xl border border-[var(--edge)] bg-white/[.03] px-4 py-3.5">
-            <div className="text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
-              Launch score
+        {/* SAMPLE — what a finished readout returns */}
+        <section className="mx-auto mt-12 w-full max-w-[880px]" aria-label="Sample readout">
+          <div
+            className="relative rounded-2xl border border-[rgba(24,224,255,.28)] p-5 md:p-6"
+            style={{
+              background:
+                "radial-gradient(circle at 16% 12%,rgba(24,224,255,.16),transparent 40%),radial-gradient(circle at 86% 84%,rgba(255,61,180,.14),transparent 42%),linear-gradient(160deg,rgba(15,22,42,.98),rgba(9,8,22,.96))",
+            }}
+          >
+          <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
+            <div className="dpx-kicker" data-tone="cyan">
+              Sample
             </div>
-            <div className="font-score mt-1 text-[38px] font-black leading-[1.05] text-[var(--cyan)]">
-              {hasResult ? launchVal : "72"}
-              <span className="font-brand text-base font-bold text-[var(--faint)]">/100</span>
+            <span className="text-[12.5px] font-semibold text-[var(--faint)]">
+              what your readout returns
+            </span>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-[1fr_1fr_1.5fr]">
+            <div className="rounded-2xl border border-[var(--edge)] bg-[rgba(7,10,20,.55)] px-4 py-3.5">
+              <div className="text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
+                Launch score
+              </div>
+              <div className="font-score mt-1 text-[38px] font-black leading-[1.05] text-[var(--cyan)]">
+                72
+                <span className="font-brand text-base font-bold text-[var(--faint)]">/100</span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[var(--edge)] bg-[rgba(7,10,20,.55)] px-4 py-3.5">
+              <div className="text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
+                Potential
+              </div>
+              <div className="font-score mt-1 text-[38px] font-black leading-[1.05] text-[var(--gold)]">
+                88
+                <span className="font-brand text-base font-bold text-[var(--faint)]">/100</span>
+              </div>
+            </div>
+
+            <div className="col-span-2 flex flex-col justify-center rounded-2xl border border-[var(--edge)] bg-[rgba(7,10,20,.55)] px-4 py-3.5 md:col-span-1">
+              <div className="flex items-center gap-2.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-[var(--gold)] shadow-[0_0_12px_var(--gold)]" />
+                <span className="text-[15px] font-bold">
+                  Verdict: <b className="text-[var(--gold)]">Strong, needs polish</b>
+                </span>
+              </div>
+              <p className="mt-1.5 text-[12.5px] font-semibold leading-5 text-[var(--faint)]">
+                Every review ends with a ship call and the top fixes, ranked.
+              </p>
             </div>
           </div>
 
-          <div className="rounded-2xl border border-[var(--edge)] bg-white/[.03] px-4 py-3.5">
-            <div className="text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
-              Potential
-            </div>
-            <div className="font-score mt-1 text-[38px] font-black leading-[1.05] text-[var(--gold)]">
-              {hasResult ? potentialVal : "88"}
-              <span className="font-brand text-base font-bold text-[var(--faint)]">/100</span>
-            </div>
+          <div className="mt-3 grid grid-cols-2 gap-2.5 md:grid-cols-4">
+            {REVIEW_DIMENSIONS.map((item) => (
+              <div
+                key={item.title}
+                className="flex items-center gap-2.5 rounded-xl border border-[var(--edge)] bg-white/[.025] px-3.5 py-2.5 transition hover:-translate-y-0.5 hover:border-[rgba(24,224,255,.4)]"
+              >
+                {item.icon}
+                <span>
+                  <span className="block text-[13.5px] font-bold">{item.title}</span>
+                  <span className="block text-[11.5px] font-semibold text-[var(--faint)]">
+                    {item.desc}
+                  </span>
+                </span>
+              </div>
+            ))}
           </div>
-        </div>
-
-        <div className="flex items-center gap-2.5 border-t border-[var(--edge)] pt-3.5">
-          <span className="h-2.5 w-2.5 rounded-full bg-[var(--gold)] shadow-[0_0_12px_var(--gold)]" />
-          <span className="text-[15px] font-bold">
-            Verdict:{" "}
-            <b className="text-[var(--gold)]">
-              {hasResult ? verdict || "—" : "Strong, needs polish"}
-            </b>
-          </span>
-        </div>
-
-        {hasResult && biggestProblem && (
-          <div className="mt-3">
-            <div className="font-brand text-[9.5px] font-bold uppercase tracking-[.18em] text-[var(--faint)]">
-              Biggest problem
-            </div>
-            <div className="mt-1 text-[15px] font-bold leading-snug">{biggestProblem}</div>
           </div>
-        )}
+        </section>
       </>
-    )}
-  </div>
-
-{!loading && (
-  <div className="mt-4 grid grid-cols-2 gap-2.5">
-    {REVIEW_DIMENSIONS.map((item) => (
-      <div
-        key={item.title}
-        className="flex items-center gap-2.5 rounded-xl border border-[var(--edge)] bg-white/[.025] px-3.5 py-2.5 transition hover:-translate-y-0.5 hover:border-[rgba(24,224,255,.4)]"
-      >
-        {item.icon}
-        <span>
-          <span className="block text-[13.5px] font-bold">{item.title}</span>
-          <span className="block text-[11.5px] font-semibold text-[var(--faint)]">
-            {item.desc}
-          </span>
-        </span>
-      </div>
-    ))}
-  </div>
-)}
-</aside>
-      </div>
       )}
 
       {/* loading — replaces the whole panel */}
@@ -1217,7 +1160,7 @@ export default function Home() {
 
           {/* HERO — review noun + score + ship decision + why */}
           <div
-            className="relative overflow-hidden rounded-2xl border p-7 shadow-[0_8px_24px_rgba(0,0,0,.2)] md:p-9"
+            className="relative overflow-hidden rounded-2xl border p-7 md:p-9"
             style={{
               borderColor:
                 decision?.tone === "good"
@@ -1584,52 +1527,44 @@ export default function Home() {
         </section>
       )}
 
-      <section className="mt-24 border-t border-white/[0.08] pt-10">
-        <div className="max-w-2xl">
-          <div className="dpx-kicker" data-tone="cyan">
-            Review workflow
-          </div>
-          <h2 className="font-brand mt-2 text-[28px] font-semibold text-[var(--foreground)]">
-            A simple review flow
-          </h2>
-          <p className="mt-3 text-[15px] leading-7 text-[var(--text-2)]">
-            Upload your store assets, get an instant AI review, and upgrade to a deeper paid report
-            if you want direct hands-on help.
-          </p>
-        </div>
+      {!hasResult && !loading && (
+      <section className="mt-24 border-t border-white/[0.08] pt-12" aria-label="How Dragon Pixel Store Analyzer works">
+        <h2 className="font-brand text-center text-[clamp(26px,4.2vw,40px)] font-bold tracking-[.02em] text-[var(--foreground)]">
+          How It Works
+        </h2>
 
-        <div className="mt-8 grid grid-cols-1 gap-4 md:grid-cols-3">
+        <div className="mt-8 grid grid-cols-1 gap-4">
           {[
             {
               step: "01",
-              title: "Upload assets",
-              text: "Add your icon, screenshots, and other store creative for review.",
+              title: "Upload Assets",
+              text: "Add your icon and current store screenshots. The analyzer works best with real gameplay captures, not mockups.",
             },
             {
               step: "02",
-              title: "Get an AI review",
-              text: "Dragon Pixel scores clarity, click pull, polish, and conversion risk.",
+              title: "Get The Review",
+              text: "The report checks the asset like a store visitor, a creative director, and a UA manager looking at conversion risk.",
             },
             {
               step: "03",
-              title: "Upgrade if needed",
-              text: "Order a paid report or store-asset pack if you want manual help.",
+              title: "Fix What Matters",
+              text: "Use the priority fixes yourself, or request Dragon Pixel help from the report if you want us to handle the redesign pass.",
             },
           ].map((item) => (
-            <div key={item.step} className="rounded-2xl border border-white/[0.08] bg-[#0d1423] p-5">
-              <div className="text-[12px] font-semibold text-[var(--text-3)]">
-                {item.step}
-              </div>
-              <h3 className="font-brand mt-3 text-[18px] font-semibold text-[var(--foreground)]">
+            <article key={item.step} className="dpx-step">
+              <span className="dpx-step-num">{item.step}</span>
+              <h3 className="font-brand text-[19px] font-semibold text-[var(--foreground)]">
                 {item.title}
               </h3>
-              <p className="mt-2 text-[14px] leading-6 text-[var(--text-2)]">{item.text}</p>
-            </div>
+              <p className="mt-2 max-w-[74ch] text-[16.5px] font-medium leading-6 text-[var(--text-2)]">
+                {item.text}
+              </p>
+            </article>
           ))}
         </div>
       </section>
+      )}
 
-      <SiteFooter />
     </main>
   );
 }

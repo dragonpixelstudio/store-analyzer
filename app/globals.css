@@ -25,13 +25,22 @@
   --font-display: var(--font-brand);
 }
 
+html {
+  scrollbar-gutter: stable;
+}
+html,
+body {
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
 body {
   position: relative;
-  background:
-    radial-gradient(circle at 80% 8%, rgba(255, 61, 180, 0.1), transparent 34%),
-    radial-gradient(circle at 12% 22%, rgba(24, 224, 255, 0.1), transparent 34%),
-    linear-gradient(135deg, var(--background) 0%, #0c1220 55%, #05070d 100%);
-  background-attachment: fixed;
+  min-height: 100vh;
+  min-height: 100svh;
+  display: flex;
+  flex-direction: column;
+  background: var(--background);
   color: var(--foreground);
   font-family: var(--font-body), system-ui, sans-serif;
   text-rendering: optimizeLegibility;
@@ -43,22 +52,25 @@ body::before {
   content: "";
   position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: -1;
   pointer-events: none;
-  background-image:
-    linear-gradient(rgba(255,255,255,0.065) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,255,255,0.065) 1px, transparent 1px),
-    linear-gradient(rgba(24,224,255,0.035) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255,61,180,0.026) 1px, transparent 1px);
-  background-size: 56px 56px, 56px 56px, 14px 14px, 14px 14px;
-  opacity: 0.34;
+  /* Color wash + grid in one fixed layer: identical look to
+     background-attachment: fixed, but reliable on mobile browsers. */
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.017) 1px, transparent 1px) 0 0 / 56px 56px,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.017) 1px, transparent 1px) 0 0 / 56px 56px,
+    linear-gradient(rgba(24, 224, 255, 0.009) 1px, transparent 1px) 0 0 / 14px 14px,
+    linear-gradient(90deg, rgba(255, 61, 180, 0.007) 1px, transparent 1px) 0 0 / 14px 14px,
+    radial-gradient(circle at 80% 8%, rgba(255, 61, 180, 0.1), transparent 34%),
+    radial-gradient(circle at 12% 22%, rgba(24, 224, 255, 0.1), transparent 34%),
+    linear-gradient(135deg, var(--background) 0%, #0c1220 55%, #05070d 100%);
 }
 
 body::after {
   content: "";
   position: fixed;
   inset: 0;
-  z-index: 0;
+  z-index: -1;
   pointer-events: none;
   background:
     radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.28) 78%),
@@ -85,44 +97,28 @@ body::after {
 .dpx-kicker {
   display: inline-flex;
   align-items: center;
-  gap: 0.7rem;
+  padding: 8px 15px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 194, 61, 0.32);
+  background: linear-gradient(120deg, rgba(255, 194, 61, 0.1), rgba(255, 194, 61, 0.04));
   color: var(--gold);
   font-family: var(--font-brand), var(--font-body), system-ui, sans-serif;
-  font-size: 0.68rem;
+  font-size: 0.66rem;
   font-weight: 700;
-  letter-spacing: 0.18em;
+  letter-spacing: 0.22em;
   line-height: 1;
   text-transform: uppercase;
 }
 
-.dpx-kicker::before,
-.dpx-kicker[data-balanced="true"]::after {
-  content: "";
-  display: inline-block;
-  width: 2rem;
-  height: 1px;
-  flex: none;
-  background: linear-gradient(90deg, var(--gold), rgba(255, 255, 255, 0.35));
-  box-shadow: 0 0 12px rgba(255, 194, 61, 0.28);
-}
-
-.dpx-kicker[data-tone="cyan"]::before,
-.dpx-kicker[data-balanced="true"][data-tone="cyan"]::after {
-  background: linear-gradient(90deg, var(--cyan), rgba(255, 255, 255, 0.35));
-  box-shadow: 0 0 12px rgba(24, 215, 255, 0.24);
-}
-
 .dpx-kicker[data-tone="cyan"] {
+  border-color: rgba(24, 215, 255, 0.32);
+  background: linear-gradient(120deg, rgba(24, 215, 255, 0.1), rgba(24, 215, 255, 0.04));
   color: var(--cyan);
 }
 
-.dpx-kicker[data-tone="magenta"]::before,
-.dpx-kicker[data-balanced="true"][data-tone="magenta"]::after {
-  background: linear-gradient(90deg, var(--magenta), rgba(255, 255, 255, 0.35));
-  box-shadow: 0 0 12px rgba(255, 70, 184, 0.22);
-}
-
 .dpx-kicker[data-tone="magenta"] {
+  border-color: rgba(255, 70, 184, 0.32);
+  background: linear-gradient(120deg, rgba(255, 70, 184, 0.1), rgba(255, 70, 184, 0.04));
   color: var(--magenta);
 }
 
@@ -317,4 +313,41 @@ body::after {
   .dpx-reupload {
     animation: none;
   }
+}
+
+
+/* ---------- How It Works steps — same design as the marketing site ---------- */
+.dpx-step {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.11);
+  border-radius: 16px;
+  padding: 22px;
+  background:
+    linear-gradient(90deg, rgba(24, 224, 255, 0.08), transparent 28%),
+    linear-gradient(160deg, rgba(255, 255, 255, 0.038), rgba(255, 255, 255, 0.012)),
+    linear-gradient(160deg, rgba(18, 18, 34, 0.96), rgba(5, 6, 15, 0.94));
+}
+.dpx-step::before {
+  content: "";
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 3px;
+  background: linear-gradient(180deg, var(--cyan), rgba(255, 61, 180, 0.7));
+  opacity: 0.78;
+}
+.dpx-step-num {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 38px;
+  height: 38px;
+  margin-bottom: 14px;
+  border-radius: 999px;
+  background: rgba(24, 224, 255, 0.11);
+  color: var(--cyan);
+  font-family: var(--font-brand), var(--font-body), system-ui, sans-serif;
+  font-size: 14px;
+  font-weight: 800;
+  box-shadow: inset 0 0 0 1px rgba(24, 224, 255, 0.25);
 }

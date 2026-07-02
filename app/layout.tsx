@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter, Orbitron, Sora } from "next/font/google";
 import "./globals.css";
+import { SiteFooter } from "@/app/components/SiteChrome";
 
 // Product UI: Sora for headings/buttons/nav, Inter for body copy.
 const sora = Sora({
@@ -37,7 +38,8 @@ export default function RootLayout({
   return (
     <html lang="en">
       <body className={`${sora.variable} ${inter.variable} ${orbitron.variable}`}>
-        {children}
+        <div className="flex-1">{children}</div>
+        <SiteFooter />
       </body>
     </html>
   );
