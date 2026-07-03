@@ -939,7 +939,7 @@ export default function Home() {
               Upload store assets
             </h2>
             <p className="mx-auto mb-6 mt-2 max-w-[52ch] text-center text-[15px] font-medium leading-6 text-[var(--text-2)]">
-              Drop your icon, screenshots, or Steam capsule — get a scored conversion readout in
+              Drop your icon, screenshots or Steam capsule to get a scored conversion readout in
               seconds.
             </p>
 
