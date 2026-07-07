@@ -3,7 +3,7 @@ import { CONTACT_EMAIL, PageShell, PolicySection } from "@/app/components/SiteCh
 
 export const metadata: Metadata = {
   title: "Terms of Service | Dragon Pixel Store Analyzer",
-  description: "Terms of service for Dragon Pixel Store Analyzer and paid beta store review services.",
+  description: "Terms of service for Dragon Pixel Store Analyzer analysis reports and AI generation credits.",
 };
 
 export default function TermsPage() {
@@ -11,7 +11,7 @@ export default function TermsPage() {
     <PageShell
       eyebrow="Terms of Service"
       title="Terms for using Store Analyzer"
-      intro="These terms explain how the free analyzer, paid reports, and beta store-asset services work."
+      intro="These terms explain how analysis reports, generation credits, subscriptions, and AI store asset fixes work."
     >
       <p className="mb-7 text-[13px] font-medium text-[var(--text-4)]">
         Effective date: July 1, 2026
@@ -20,8 +20,8 @@ export default function TermsPage() {
       <PolicySection title="1. Agreement">
         <p>
           These Terms of Service apply to Dragon Pixel Store Analyzer, available at
-          launch.dragonpixelstudio.com, and any related paid beta services provided by Dragon
-          Pixel Studio. By using the site or ordering a paid service, you agree to these terms.
+          launch.dragonpixelstudio.com, and related software features provided by Dragon Pixel
+          Studio. By using the site or buying a paid plan, you agree to these terms.
         </p>
       </PolicySection>
 
@@ -29,8 +29,8 @@ export default function TermsPage() {
         <p>
           Store Analyzer reviews game icons, screenshots, and store creative for conversion risks
           such as readability, click pull, gameplay clarity, emotional signal, and visual polish.
-          The free analyzer provides an automated review. Paid services may include a deeper
-          manual report or store-asset guidance based on the assets you submit.
+          The analyzer provides automated reports, priority fixes, and revision briefs. Paid plans
+          include metered analysis reports and generation credits for AI-created asset variants.
         </p>
         <p>
           The service does not guarantee app store approval, downloads, rankings, revenue, ad
@@ -42,7 +42,7 @@ export default function TermsPage() {
         <p>
           You keep ownership of your game, artwork, screenshots, trademarks, and other submitted
           materials. You give Dragon Pixel Studio permission to process those materials only as
-          needed to provide the analysis, report, or paid deliverable you requested.
+          needed to provide analysis, generated variants, exports, support, and account records.
         </p>
         <p>
           You are responsible for making sure you have the rights to upload and use the assets you
@@ -53,21 +53,21 @@ export default function TermsPage() {
 
       <PolicySection title="4. Payments">
         <p>
-          Paid services are listed on the pricing page in USD. Paddle will process checkout,
-          receipts, taxes, and payment support after Paddle checkout is enabled for the site. Paddle
-          may appear on your payment statement.
+          Paid plans, subscriptions, and credit top-ups are listed on the pricing page in USD.
+          Paddle will process checkout, receipts, taxes, and payment support after checkout is
+          enabled for the site. Paddle may appear on your payment statement.
         </p>
         <p>
-          Paid beta services are one-time purchases unless a future pricing page clearly states that
-          a recurring subscription is being sold.
+          Subscription plans renew monthly unless cancelled. Monthly plan credits reset each
+          billing cycle. Purchased top-up credits remain available while your account is active.
         </p>
       </PolicySection>
 
-      <PolicySection title="5. Delivery">
+      <PolicySection title="5. Credits and generated outputs">
         <p>
-          Delivery timelines are listed on the pricing page or in the order confirmation. Delivery
-          may require you to provide source screenshots, store links, game context, or reference
-          materials. Delays caused by missing information may extend the timeline.
+          Generation credits are used only for successfully delivered image variants. API errors,
+          timeouts, and blocked requests do not consume credits. Analysis reports do not consume
+          generation credits, but they are metered by plan.
         </p>
       </PolicySection>
 

@@ -4,16 +4,15 @@ import Image from "next/image";
 import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SiteNav } from "@/app/components/SiteChrome";
+import GenerateVariants, { type GenerateSource } from "@/app/components/GenerateVariants";
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2 MB
 const MAX_SCREENSHOTS = 3;
 const MAX_CREATIVES = 3;
 const OK_TYPES = ["image/png", "image/jpeg", "image/webp"];
 
-/* ---------- paid offer: diagnosis-driven store-asset packs ----------
-   Paddle verification needs the pricing/policy pages public first. The offer
-   links to pricing until the live Paddle checkout is enabled. */
-type PackId = "fix" | "store";
+/* ---------- paid offer: self-serve analysis + generation plans ---------- */
+type PackId = "quick" | "indie" | "pro";
 
 const PACKS: {
   id: PackId;
@@ -25,33 +24,54 @@ const PACKS: {
   flagship?: boolean;
 }[] = [
   {
-    id: "store",
-    name: "Store Asset Pack",
-    price: "$79",
-    anchor: "Full store set · studios quote $150–400",
+    id: "quick",
+    name: "Quick Fix",
+    price: "$5",
+    anchor: "6 generation credits, one-time",
     bullets: [
-      "Icon polish + 5 screenshot layouts",
-      "Feature graphic / Steam capsule",
-      "Built from the weak spots flagged above",
-      "Ready to upload, on-brand",
+      "For one icon or screenshot",
+      "Generate 2-3 focused variants",
+      "No subscription required",
+      "Upgrade later if you keep polishing",
     ],
-    cta: "View store pack pricing",
+    cta: "View one-time option",
+  },
+  {
+    id: "indie",
+    name: "Indie",
+    price: "$19/mo",
+    anchor: "50 generation credits + 100 reports/month",
+    bullets: [
+      "Fix icons, screenshots, capsules, and feature graphics",
+      "Full-resolution exports in platform-ready sizes",
+      "Before/after saved projects",
+      "Credit cost shown before generation",
+    ],
+    cta: "View Indie pricing",
     flagship: true,
   },
   {
-    id: "fix",
-    name: "Launch Fix Pack",
-    price: "$29",
-    anchor: "The fastest way to act on this review",
+    id: "pro",
+    name: "Pro",
+    price: "$49/mo",
+    anchor: "200 generation credits + 500 reports/month",
     bullets: [
-      "3 corrected store screenshots from your real game",
-      "Fixes the exact weak spots flagged above",
-      "Headline, focal point + clarity pass",
-      "Delivered in 24 hours",
+      "Batch screenshot fixing",
+      "Priority generation queue",
+      "Platform export bundles",
+      "Unlimited projects and brand presets",
     ],
-    cta: "View report pricing",
+    cta: "View Pro pricing",
   },
 ];
+
+type AccountPlan = "free" | "quick" | "indie" | "pro";
+
+type AccountStatus = {
+  plan: AccountPlan;
+  isSubscriber: boolean;
+  credits?: { remaining?: number };
+};
 
 type Role = "icon" | "screenshot" | "featureGraphic" | "steamCapsule" | "keyArt";
 
@@ -107,6 +127,17 @@ type ClickReads = {
 type GameplayReads = { clear: string[]; unclear: string[] };
 type EmotionReads = { present: string[]; missing: string[] };
 
+type EditPlan = {
+  mode?: "conservative_polish" | "concept_upgrade";
+  editStrength?: "subtle" | "clear" | "strong";
+  preserve?: string[];
+  requiredEdits?: string[];
+  forbiddenChanges?: string[];
+  successChecks?: string[];
+  variant1Mode?: string;
+  variant2Mode?: string;
+};
+
 type AnalyzePayload = {
   error?: string;
   verdict?: string;
@@ -126,6 +157,8 @@ type AnalyzePayload = {
     weaknesses?: string[];
     biggestProblem?: string;
     topFixes?: DragonPixelFix[];
+    revisionBrief?: string;
+    editPlan?: EditPlan;
   };
   shelf?: { visible: string[]; lost: string[] };
   click?: ClickReads;
@@ -208,6 +241,67 @@ function parseFixes(v: unknown): DragonPixelFix[] {
     })
     .filter((f): f is DragonPixelFix => f !== null && f.action.length > 0);
 }
+
+function parseEditPlan(v: unknown): EditPlan | undefined {
+  if (!isRecord(v)) return undefined;
+
+  const preserve = strList(v.preserve);
+  const requiredEdits = strList(v.requiredEdits);
+  const forbiddenChanges = strList(v.forbiddenChanges);
+  const successChecks = strList(v.successChecks);
+  const mode = str(v.mode);
+  const editStrength = str(v.editStrength);
+  const variant1Mode = str(v.variant1Mode);
+  const variant2Mode = str(v.variant2Mode);
+
+  if (
+    !preserve.length &&
+    !requiredEdits.length &&
+    !forbiddenChanges.length &&
+    !successChecks.length &&
+    !mode &&
+    !editStrength &&
+    !variant1Mode &&
+    !variant2Mode
+  ) {
+    return undefined;
+  }
+
+  return {
+    mode:
+      mode === "conservative_polish" || mode === "concept_upgrade"
+        ? mode
+        : undefined,
+    editStrength:
+      editStrength === "subtle" || editStrength === "clear" || editStrength === "strong"
+        ? editStrength
+        : undefined,
+    preserve,
+    requiredEdits,
+    forbiddenChanges,
+    successChecks,
+    variant1Mode,
+    variant2Mode,
+  };
+}
+
+function editPlanToText(plan: EditPlan | null): string {
+  if (!plan) return "";
+
+  return [
+    plan.mode ? `Mode: ${plan.mode}` : "",
+    plan.editStrength ? `Edit strength: ${plan.editStrength}` : "",
+    ...(plan.preserve ?? []).map((item) => `Preserve: ${item}`),
+    ...(plan.requiredEdits ?? []).map((item) => `Edit: ${item}`),
+    ...(plan.forbiddenChanges ?? []).map((item) => `Do not: ${item}`),
+    ...(plan.successChecks ?? []).map((item) => `Success check: ${item}`),
+    plan.variant1Mode ? `Variant 1 mode: ${plan.variant1Mode}` : "",
+    plan.variant2Mode ? `Variant 2 mode: ${plan.variant2Mode}` : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 function parsePayload(raw: string): AnalyzePayload | null {
   let parsed: unknown;
   try {
@@ -234,6 +328,8 @@ function parsePayload(raw: string): AnalyzePayload | null {
         weaknesses: strList(rawCalc.weaknesses),
         biggestProblem: str(rawCalc.biggestProblem),
         topFixes: parseFixes(rawCalc.topFixes),
+        revisionBrief: str(rawCalc.revisionBrief),
+        editPlan: parseEditPlan(rawCalc.editPlan),
       }
     : undefined;
   const obs = isRecord(parsed.observations) ? parsed.observations : undefined;
@@ -653,11 +749,42 @@ export default function Home() {
   const [strengths, setStrengths] = useState<string[]>([]);
   const [weaknesses, setWeaknesses] = useState<string[]>([]);
   const [topFixes, setTopFixes] = useState<DragonPixelFix[]>([]);
+  const [revisionBrief, setRevisionBrief] = useState("");
+  const [editPlan, setEditPlan] = useState<EditPlan | null>(null);
   const [shelf, setShelf] = useState<{ visible: string[]; lost: string[] } | null>(null);
   const [click, setClick] = useState<ClickReads | null>(null);
   const [gameplay, setGameplay] = useState<GameplayReads | null>(null);
   const [emotion, setEmotion] = useState<EmotionReads | null>(null);
   const [error, setError] = useState("");
+  const [account, setAccount] = useState<AccountStatus | null>(null);
+
+  const refreshAccount = useCallback(async () => {
+    try {
+      const res = await fetch("/api/account/status", { cache: "no-store" });
+      if (!res.ok) return;
+      const data = await res.json();
+      if (data?.account) setAccount(data.account);
+    } catch {
+      // Never block the analyzer on account status.
+    }
+  }, []);
+
+  useEffect(() => {
+    const initial = setTimeout(() => void refreshAccount(), 0);
+    // Re-check when the tab regains focus: after checkout the user returns
+    // here and the subscribe panel must disappear immediately.
+    const onFocus = () => void refreshAccount();
+    window.addEventListener("focus", onFocus);
+    return () => {
+      clearTimeout(initial);
+      window.removeEventListener("focus", onFocus);
+    };
+  }, [refreshAccount]);
+
+  const isPaidSubscriber =
+    account?.isSubscriber === true ||
+    account?.plan === "indie" ||
+    account?.plan === "pro";
   const [dragOver, setDragOver] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -800,6 +927,8 @@ export default function Home() {
     setStrengths([]);
     setWeaknesses([]);
     setTopFixes([]);
+    setRevisionBrief("");
+    setEditPlan(null);
     setShelf(null);
     setClick(null);
     setGameplay(null);
@@ -831,6 +960,8 @@ export default function Home() {
       setStrengths(data.calculated?.strengths ?? []);
       setWeaknesses(data.calculated?.weaknesses ?? []);
       setTopFixes(data.calculated?.topFixes ?? []);
+      setRevisionBrief(data.calculated?.revisionBrief ?? "");
+      setEditPlan(data.calculated?.editPlan ?? null);
       setShelf(data.shelf ?? null);
       setClick(data.click ?? null);
       setGameplay(data.gameplay ?? null);
@@ -858,6 +989,8 @@ export default function Home() {
     setStrengths([]);
     setWeaknesses([]);
     setTopFixes([]);
+    setRevisionBrief("");
+    setEditPlan(null);
     setShelf(null);
     setClick(null);
     setGameplay(null);
@@ -881,10 +1014,26 @@ export default function Home() {
   const gameplayAssessed = breakdown.find((r) => r.key === "gameplayClarity")?.assessed ?? false;
   // the 32px shelf test is an icon concept; only show it when an icon was uploaded
   const previewAsset = assets.find((a) => a.role === "icon" && !a.error) || null;
+  const editPlanText = editPlanToText(editPlan) || revisionBrief;
   const impactTone =
     impact?.tone === "good" ? "var(--green)" : impact?.tone === "bad" ? "var(--magenta)" : "var(--gold)";
   const decisionTone =
     decision?.tone === "good" ? "var(--green)" : decision?.tone === "bad" ? "var(--magenta)" : "var(--gold)";
+  const revisionBriefLines = revisionBrief
+    .split(/\n+/)
+    .flatMap((chunk) => {
+      const trimmed = chunk.trim();
+      if (!trimmed) return [];
+      if (trimmed.length > 130 && trimmed.includes(". ")) {
+        return trimmed
+          .split(". ")
+          .map((part, index, list) => (index < list.length - 1 && !part.endsWith(".") ? `${part}.` : part));
+      }
+      return [trimmed];
+    })
+    .map((line) => line.replace(/^[-\d.\s]+/, "").trim())
+    .filter(Boolean)
+    .slice(0, 6);
   return (
     <main className="relative z-[1] mx-auto w-[min(1060px,calc(100%-44px))] pb-16">
       {/* header */}
@@ -1282,7 +1431,9 @@ export default function Home() {
                   ? "Fix before launch"
                   : "What to fix"}
               </div>
-              <h2 className="font-brand mt-1 text-[22px] font-semibold">Top 3 actions</h2>
+              <h2 className="font-brand mt-1 text-[22px] font-semibold">
+                Top {topFixes.length} action{topFixes.length === 1 ? "" : "s"}
+              </h2>
               <p className="mb-5 mt-1.5 text-sm font-semibold text-[var(--muted)]">
                 Ranked by impact — start at the top.
               </p>
@@ -1316,9 +1467,44 @@ export default function Home() {
             </div>
           )}
 
+          {revisionBrief && (
+            <ReportCard title="AI revision brief">
+              <div className="rounded-xl border border-[var(--edge)] bg-black/25 p-4">
+                {revisionBriefLines.map((line, index) => (
+                  <p
+                    key={`${index}-${line.slice(0, 18)}`}
+                    className="mb-2 last:mb-0 text-[13.5px] font-semibold leading-snug text-[var(--text-2)]"
+                  >
+                    {line}
+                  </p>
+                ))}
+              </div>
+              <GenerateVariants
+                sources={assets
+                  .filter((a) => !a.error && !a.overflow)
+                  .map<GenerateSource>((a) => ({
+                    id: a.id,
+                    label: `${ROLE_LABELS[a.role]} · ${a.file.name}`,
+                    url: a.url,
+                    file: a.file,
+                    assetType:
+                      a.role === "icon"
+                        ? "icon"
+                        : a.role === "screenshot"
+                          ? "screenshot"
+                          : a.role === "steamCapsule"
+                            ? "capsule"
+                            : "feature-graphic",
+                  }))}
+                platform={assets.some((a) => a.role === "steamCapsule") ? "steam" : "google-play"}
+                revisionBrief={editPlanText}
+              />
+            </ReportCard>
+          )}
+
           {/* ADVANCED ANALYSIS — everything detailed, collapsed */}
           <details
-            className="dpx-details group rounded-2xl border border-[var(--edge)]"
+            className="dpx-details dpx-details-pulse group rounded-2xl border border-[var(--edge)]"
             style={{ background: "linear-gradient(160deg,#11182a,#070b14)" }}
           >
             <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-6 py-5 transition hover:bg-white/[.02]">
@@ -1451,7 +1637,18 @@ export default function Home() {
             </div>
           </details>
 
-          {/* paid offer — diagnosis-driven store-asset packs */}
+          {/* paid offer — self-serve AI fixes; hidden for active subscribers */}
+          {isPaidSubscriber && (
+            <div className="rounded-2xl border border-[rgba(105,255,0,.26)] bg-[rgba(105,255,0,.055)] p-4">
+              <div className="dpx-kicker" data-tone="cyan">
+                Active plan
+              </div>
+              <p className="mt-1 text-[13.5px] font-semibold text-[var(--muted)]">
+                You are on {account?.plan === "pro" ? "Pro" : "Indie"}. Use your generation credits above.
+              </p>
+            </div>
+          )}
+          {!isPaidSubscriber && (
           <div
             className="rounded-2xl border-[1.5px] p-6"
             style={{
@@ -1464,18 +1661,18 @@ export default function Home() {
               Action plan
             </div>
             <h2 className="font-brand mt-1 text-[22px] font-semibold">
-              Have Dragon Pixel fix exactly what this review flagged
+              Turn this review into AI-generated fixes
             </h2>
             <p className="mb-5 mt-1.5 text-sm font-semibold text-[var(--muted)]">
-              We rebuild your store assets from your real game footage, correcting the weak spots
-              above. Delivered in 24 hours.
+              Generate a one-off fix when you only need one asset, or use a plan when you are
+              polishing a full store page.
             </p>
 
-            <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+            <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
               {PACKS.map((p) => (
                 <div
                   key={p.id}
-                  className="flex flex-col rounded-2xl border p-5"
+                  className="dpx-plan-card flex flex-col rounded-2xl border p-5"
                   style={{
                     borderColor: p.flagship ? "rgba(255,194,61,.4)" : "var(--edge)",
                     background: p.flagship ? "#21190c" : "#0d1423",
@@ -1519,11 +1716,13 @@ export default function Home() {
 
             <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
               <span className="text-[12px] font-semibold text-[var(--faint)]">
-                Paddle checkout is being connected after domain verification. Paid beta delivery
-                starts from the pricing and contact pages.
+                Secure checkout is coming online shortly. Every plan is self-serve
+                software: analysis reports are included with your plan, and credits
+                are only spent when an improved image is delivered to you.
               </span>
             </div>
           </div>
+          )}
         </section>
       )}
 
@@ -1547,8 +1746,8 @@ export default function Home() {
             },
             {
               step: "03",
-              title: "Fix What Matters",
-              text: "Use the priority fixes yourself, or request Dragon Pixel help from the report if you want us to handle the redesign pass.",
+              title: "Generate Targeted Fixes",
+              text: "Use the revision brief to create AI variants, compare the before/after, and export the version that improves the store asset.",
             },
           ].map((item) => (
             <article key={item.step} className="dpx-step">

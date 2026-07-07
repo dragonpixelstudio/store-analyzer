@@ -1,5 +1,13 @@
 import { GoogleGenAI, type Part } from "@google/genai";
-import { ipRatelimit, globalRatelimit, getClientIp } from "@/lib/ratelimit";
+import {
+  buildAnalyzerPrompt,
+  parseAnalyzerReply,
+  type AnalyzerAssetMeta,
+  type AnalyzerPlatform,
+} from "@/lib/analyzerPrompt";
+import { callerKey, dailyReportPeriod, getCreditStore } from "@/lib/credits";
+import crypto from "node:crypto";
+import { ipRatelimit, globalRatelimit, getClientIp, redis } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 export const maxDuration = 30;
@@ -23,6 +31,11 @@ const ALLOWED_ORIGINS = new Set([
 type CommercialPolish = "low" | "medium" | "high";
 
 type Observations = {
+  detectedText?: string;
+  modelScore?: number;
+  notGameAsset?: boolean;
+  revisionBrief?: string;
+  editPlan?: EditPlan;
   shelfTest?: {
     visibleElements?: string[];
     lostElements?: string[];
@@ -61,9 +74,12 @@ type Observations = {
   };
   assetReview?: {
     assetName: string;
+    assetType?: string;
+    detectedText?: string;
     mainObservation: string;
     mainIssue: string;
     bestFix: string;
+    revisionBrief?: string;
   }[];
   whatWorks?: string[];
   whatHurtsConversion?: string[];
@@ -73,6 +89,17 @@ type Observations = {
 };
 
 type DragonPixelFix = { action: string; why: string; change: string };
+
+type EditPlan = {
+  mode?: "conservative_polish" | "concept_upgrade";
+  editStrength?: "subtle" | "clear" | "strong";
+  preserve?: string[];
+  requiredEdits?: string[];
+  forbiddenChanges?: string[];
+  successChecks?: string[];
+  variant1Mode?: string;
+  variant2Mode?: string;
+};
 
 type JsonBody =
   | {
@@ -107,6 +134,12 @@ function booleanValue(value: unknown): boolean | undefined {
   return typeof value === "boolean" ? value : undefined;
 }
 
+function numberValue(value: unknown): number | undefined {
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
 function stringArray(value: unknown): string[] | undefined {
   if (!Array.isArray(value)) return undefined;
 
@@ -137,7 +170,7 @@ function dragonPixelFixesValue(value: unknown): DragonPixelFix[] | undefined {
         return action ? { action, why: "", change: "" } : null;
       }
       if (isRecord(item)) {
-        const action = stringValue(item.action) || "";
+        const action = stringValue(item.action) || stringValue(item.title) || "";
         const why = stringValue(item.why) || "";
         const change = stringValue(item.change) || "";
         if (!action && !change) return null;
@@ -157,13 +190,65 @@ function assetReviewValue(value: unknown): Observations["assetReview"] {
     .filter(isRecord)
     .map((asset) => ({
       assetName: stringValue(asset.assetName) || "Uploaded asset",
+      assetType: stringValue(asset.assetType),
+      detectedText: stringValue(asset.detectedText),
       mainObservation: stringValue(asset.mainObservation) || "",
       mainIssue: stringValue(asset.mainIssue) || "",
       bestFix: stringValue(asset.bestFix) || "",
+      revisionBrief: stringValue(asset.revisionBrief),
     }))
-    .slice(0, MAX_SCREENSHOTS + 1);
+    .slice(0, MAX_SCREENSHOTS + MAX_CREATIVES + 1);
 
   return assets.length > 0 ? assets : undefined;
+}
+
+function editPlanValue(value: unknown): EditPlan | undefined {
+  if (!isRecord(value)) return undefined;
+
+  const preserve = stringArray(value.preserve);
+  const requiredEdits =
+    stringArray(value.requiredEdits) || stringArray(value.required_edits);
+  const forbiddenChanges =
+    stringArray(value.forbiddenChanges) || stringArray(value.forbidden_changes);
+  const successChecks =
+    stringArray(value.successChecks) || stringArray(value.success_checks);
+  const mode = stringValue(value.mode);
+  const editStrength =
+    stringValue(value.editStrength) || stringValue(value.edit_strength);
+  const variant1Mode =
+    stringValue(value.variant1Mode) || stringValue(value.variant_1_mode);
+  const variant2Mode =
+    stringValue(value.variant2Mode) || stringValue(value.variant_2_mode);
+
+  if (
+    !preserve &&
+    !requiredEdits &&
+    !forbiddenChanges &&
+    !successChecks &&
+    !mode &&
+    !editStrength &&
+    !variant1Mode &&
+    !variant2Mode
+  ) {
+    return undefined;
+  }
+
+  return {
+    mode:
+      mode === "concept_upgrade" || mode === "conservative_polish"
+        ? mode
+        : undefined,
+    editStrength:
+      editStrength === "subtle" || editStrength === "clear" || editStrength === "strong"
+        ? editStrength
+        : undefined,
+    preserve,
+    requiredEdits,
+    forbiddenChanges,
+    successChecks,
+    variant1Mode,
+    variant2Mode,
+  };
 }
 
 function sanitizeObservations(value: unknown): Observations | null {
@@ -181,6 +266,12 @@ function sanitizeObservations(value: unknown): Observations | null {
   const consistency = isRecord(value.consistency) ? value.consistency : {};
 
   return {
+    detectedText: stringValue(value.detectedText) || stringValue(value.detected_text),
+    modelScore: numberValue(value.modelScore) ?? numberValue(value.score),
+    notGameAsset: booleanValue(value.notGameAsset) ?? booleanValue(value.not_a_game_asset),
+    revisionBrief:
+      stringValue(value.revisionBrief) || stringValue(value.revision_brief),
+    editPlan: editPlanValue(value.editPlan) || editPlanValue(value.edit_plan),
     shelfTest: {
       visibleElements: stringArray(shelfTest.visibleElements),
       lostElements: stringArray(shelfTest.lostElements),
@@ -225,10 +316,12 @@ function sanitizeObservations(value: unknown): Observations | null {
       iconMatchesScreenshots: booleanValue(consistency.iconMatchesScreenshots),
       notes: stringValue(consistency.notes),
     },
-    assetReview: assetReviewValue(value.assetReview),
+    assetReview: assetReviewValue(value.assetReview) || assetReviewValue(value.asset_review),
     whatWorks: stringArray(value.whatWorks),
     whatHurtsConversion: stringArray(value.whatHurtsConversion),
-    dragonPixelFixes: dragonPixelFixesValue(value.dragonPixelFixes),
+    dragonPixelFixes:
+      dragonPixelFixesValue(value.dragonPixelFixes) ||
+      dragonPixelFixesValue(value.priority_fixes),
     marketingRiskSummary: stringValue(value.marketingRiskSummary),
     finalCall: stringValue(value.finalCall),
   };
@@ -250,11 +343,12 @@ function isAllowedRequestOrigin(req: Request) {
   return false;
 }
 
-function cleanGeminiJson(rawText: string) {
-  return rawText
-    .replace(/```json/g, "")
-    .replace(/```/g, "")
-    .trim();
+function platformValue(value: FormDataEntryValue | null): AnalyzerPlatform {
+  if (value === "steam" || value === "google-play" || value === "app-store") {
+    return value;
+  }
+
+  return "unknown";
 }
 
 function hasAny(text: string, terms: string[]) {
@@ -378,8 +472,35 @@ function getImageDimensions(
 }
 
 type ImagePartResult =
-  | { part: { inlineData: { mimeType: string; data: string } } }
+  | {
+      part: { inlineData: { mimeType: string; data: string } };
+      dimensions: { width: number; height: number };
+      hash: string;
+    }
   | { error: string };
+
+// Bump this whenever prompt/scoring logic changes so stale cached reports
+// are naturally invalidated.
+const ANALYZER_PROMPT_VERSION = "icon-v6-2026-07-07";
+const ANALYSIS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days
+
+function stableHash(value: unknown) {
+  return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
+}
+
+function makeAnalysisCacheKey(args: {
+  platform: AnalyzerPlatform;
+  gameContext: string;
+  reviewMode: ReviewMode;
+  assets: {
+    kind: AnalyzerAssetMeta["providedKind"];
+    width: number;
+    height: number;
+    hash: string;
+  }[];
+}) {
+  return `dpx:analysis:${ANALYZER_PROMPT_VERSION}:${stableHash(args)}`;
+}
 
 async function prepareImagePart(
   file: File,
@@ -401,10 +522,16 @@ async function prepareImagePart(
       error: `${label} must be a real PNG, JPEG, or WebP image.`,
     };
   }
+  const hash = crypto.createHash("sha256").update(buffer).digest("hex");
 
   const dimensions = getImageDimensions(buffer, mime);
+  if (!dimensions) {
+    return {
+      error: `${label} dimensions could not be read. Try exporting as PNG, JPEG, or WebP again.`,
+    };
+  }
+
   if (
-    dimensions &&
     dimensions.width * dimensions.height > MAX_IMAGE_PIXELS
   ) {
     return {
@@ -419,6 +546,8 @@ async function prepareImagePart(
         data: buffer.toString("base64"),
       },
     },
+    dimensions,
+    hash,
   };
 }
 
@@ -511,6 +640,342 @@ function dedupeList(items?: string[]): string[] {
     seen.add(key);
     return true;
   });
+}
+
+function makeIconSafeText(item: string): string {
+  return item
+    .replace(
+      /\b(?:add|include|integrate|place|insert|overlay|put)\s+(?:the\s+)?(?:game'?s|game|app)\s+(?:title|name)\s+or\s+(?:a\s+)?(?:unique\s+)?(?:logo|brand)\s+(?:element|mark)\b/gi,
+      "Add a distinctive non-text icon mark"
+    )
+    .replace(
+      /\b(?:add|include|integrate|place|insert|overlay|put)\s+(?:the\s+)?(?:game'?s|game|app)\s+(?:title|name)\b/gi,
+      "Strengthen the main icon mark"
+    )
+    .replace(/\b(?:game'?s|game|app)\s+(?:title|name)\s+or\s+(?:a\s+)?unique\s+(?:brand\s+)?logo\b/gi, "unique non-text icon mark")
+    .replace(/\b(?:game'?s|game|app)\s+(?:title|name)\b/gi, "icon identity")
+    .replace(/\btitle text\b/gi, "icon identity")
+    .replace(/\bwordmark\b/gi, "non-text icon mark")
+    .replace(/\btagline\b/gi, "visual cue")
+    .trim();
+}
+
+function iconSafeList(items?: string[]): string[] {
+  return dedupeList(items)
+    .map(makeIconSafeText)
+    .filter(Boolean);
+}
+
+const ICON_DETAIL_PATTERN =
+  /\b(core|highlight|rim|edge|spark|sparks|particle|particles|trail|trails|streak|streaks|burst|flash|background|detail|details|glow variation|micro-effect|micro effect|light point)\b/i;
+
+const ICON_SUBJECT_PATTERN =
+  /\b(orb|circle|ball|player|ship|character|mascot|enemy|monster|obstacle|square|diamond|block|gem|weapon|vehicle|mark|symbol|object)\b/i;
+
+function normalizeIconElement(item: string): string {
+  return item
+    .replace(/\bbright\s+(?:white\s+)?core\s+of\s+(?:the\s+)?/gi, "")
+    .replace(/\b(?:white\s+)?core\s+of\s+(?:the\s+)?/gi, "")
+    .replace(/\bcollision\s+point\b/gi, "collision point")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function iconCoreSubjects(obs: Observations): string[] {
+  const visible = dedupeList(obs.shelfTest?.visibleElements).map(normalizeIconElement);
+  const dominant = obs.shelfTest?.dominantElement
+    ? normalizeIconElement(obs.shelfTest.dominantElement)
+    : "";
+  const ordered = dedupeList([dominant, ...visible].filter(Boolean));
+
+  const subjects = ordered.filter((item) => {
+    const looksLikeSubject = ICON_SUBJECT_PATTERN.test(item);
+    const isOnlyDetail = ICON_DETAIL_PATTERN.test(item) && !looksLikeSubject;
+    return looksLikeSubject && !isOnlyDetail;
+  });
+
+  return (subjects.length > 0 ? subjects : ordered).slice(0, 3);
+}
+
+function joinReadable(items: string[]): string {
+  if (items.length === 0) return "";
+  if (items.length === 1) return items[0];
+  if (items.length === 2) return `${items[0]} and ${items[1]}`;
+  return `${items.slice(0, -1).join(", ")}, and ${items[items.length - 1]}`;
+}
+
+function iconSubjectGroup(obs: Observations): string {
+  const subjects = iconCoreSubjects(obs);
+  if (subjects.length >= 2) return `the ${joinReadable(subjects.slice(0, 2))} relationship`;
+  if (subjects.length === 1) return `the ${subjects[0]}`;
+  return "the main icon subject group";
+}
+
+function iconCleanupTargets(obs: Observations): string {
+  const lost = dedupeList(obs.shelfTest?.lostElements);
+  const noisyVisible = dedupeList(obs.shelfTest?.visibleElements).filter((item) =>
+    ICON_DETAIL_PATTERN.test(item)
+  );
+  const targets = dedupeList([...lost, ...noisyVisible]).slice(0, 4);
+  return targets.length > 0
+    ? targets.join(", ")
+    : "thin trails, tiny sparks, weak background detail, and subtle glow noise";
+}
+
+function iconSafeFixes(fixes: DragonPixelFix[]): DragonPixelFix[] {
+  return fixes.map((fix) => ({
+    action: makeIconSafeText(fix.action),
+    why: makeIconSafeText(fix.why),
+    change: makeIconSafeText(fix.change),
+  }));
+}
+
+function iconSafeRevisionBrief(obs: Observations): string {
+  const group = iconSubjectGroup(obs);
+  const cleanupTargets = iconCleanupTargets(obs);
+
+  const lines = [
+    "Keep the same core subjects, same collision/setup idea, same palette family, and same square icon composition.",
+    `Make ${group} noticeably larger as a complete readable group; do not enlarge only an internal highlight or glow core.`,
+    `Tighten the crop around ${group} while keeping safe margins and the same subject relationship.`,
+    `Simplify small-size noise: ${cleanupTargets}.`,
+    `Increase rim and edge contrast around the main readable shapes so the silhouette separates clearly from the dark background.`,
+    "Do not add title text, new objects, new characters, or a different gameplay concept.",
+  ];
+
+  return dedupeList(lines).slice(0, 6).join("\n");
+}
+
+function iconEditPlan(obs: Observations): EditPlan {
+  const group = iconSubjectGroup(obs);
+  const subjects = iconCoreSubjects(obs);
+  const cleanupTargets = iconCleanupTargets(obs);
+
+  return {
+    mode: "conservative_polish",
+    editStrength: "clear",
+    preserve: [
+      subjects.length > 0
+        ? `Same core subjects: ${joinReadable(subjects)}.`
+        : "Same core subjects and same visual concept as the uploaded icon.",
+      "Same palette family, art style, camera angle, and square icon composition.",
+      "Same subject relationship/collision setup; improve readability without redesigning the icon.",
+      "At least 85-90% of the original concept should remain recognizable.",
+    ],
+    requiredEdits: [
+      `Scale ${group} up as one complete subject group so the focal event occupies roughly 72-80% of the square canvas while keeping safe margins.`,
+      `Tighten the crop around the focal event without changing the same subject relationship.`,
+      `Simplify or remove low-value thumbnail noise: ${cleanupTargets}. Keep only 3-5 major readable sparks or accents if sparks are part of the source.`,
+      "Shorten and simplify trails by roughly 20-35% when trails compete with the focal read.",
+      `Increase edge/rim contrast around the main readable shapes for stronger figure-ground separation.`,
+      "Keep the background clean and dark; reduce background detail to atmospheric support only.",
+    ],
+    forbiddenChanges: [
+      "Do not replace the main subject with a different object, character, or symbol.",
+      "Do not add title text, subtitles, logos, badges, ratings, or UI labels.",
+      "Do not invent a new gameplay concept, new character, new scene, or new perspective.",
+      "Do not dramatically redesign secondary subjects such as an opposing square, obstacle, enemy, or hazard.",
+      "Do not change the art style or palette family.",
+    ],
+    successChecks: [
+      "The edited version reads more clearly at 32px than the original.",
+      "The edited version remains obviously the same icon concept.",
+      "The change is visible immediately, not subtle to the point of irrelevance.",
+      "The main event is larger, cleaner, and easier to separate from the background.",
+    ],
+    variant1Mode:
+      "Faithful improvement: preserve layout closely, enlarge the focal event moderately, reduce clutter slightly, and keep most original energy.",
+    variant2Mode:
+      "Stronger improvement: tighten crop more, simplify small details more aggressively, reduce trails/sparks harder, and push silhouette clarity while keeping the same concept.",
+  };
+}
+
+function fallbackEditPlan(obs: Observations, fixes: DragonPixelFix[]): EditPlan {
+  const modelPlan = obs.editPlan;
+  if (modelPlan) {
+    return {
+      mode: modelPlan.mode ?? "conservative_polish",
+      editStrength: modelPlan.editStrength ?? "clear",
+      preserve: dedupeList(modelPlan.preserve).slice(0, 5),
+      requiredEdits: dedupeList(modelPlan.requiredEdits).slice(0, 6),
+      forbiddenChanges: dedupeList(modelPlan.forbiddenChanges).slice(0, 6),
+      successChecks: dedupeList(modelPlan.successChecks).slice(0, 5),
+      variant1Mode: modelPlan.variant1Mode,
+      variant2Mode: modelPlan.variant2Mode,
+    };
+  }
+
+  return {
+    mode: "conservative_polish",
+    editStrength: "clear",
+    preserve: [
+      "Same game identity, same source image subject family, and same art style.",
+      "Same real gameplay/store asset content; improve presentation without inventing new content.",
+    ],
+    requiredEdits: fixes
+      .map((fix) => fix.change || fix.action)
+      .filter(Boolean)
+      .slice(0, 5),
+    forbiddenChanges: [
+      "Do not invent fake gameplay, fake UI, awards, ratings, or platform badges.",
+      "Do not add unrelated objects, characters, faces, or a different art style.",
+      "Do not make unsupported marketing claims.",
+    ],
+    successChecks: [
+      "The improved asset keeps the source identity and real content intact.",
+      "The improvement is visible without needing to compare tiny details.",
+      "The result is clearer at the target store display size.",
+    ],
+    variant1Mode: "Faithful improvement: apply the required fixes while staying close to the source.",
+    variant2Mode: "Stronger improvement: push clarity and hierarchy harder without changing the concept.",
+  };
+}
+
+function pushUniqueFix(out: DragonPixelFix[], fix: DragonPixelFix) {
+  const action = fix.action.trim();
+  if (!action) return;
+  const head = action.toLowerCase().slice(0, 30);
+  if (out.some((item) => item.action.toLowerCase().includes(head))) return;
+  out.push({ action, why: fix.why.trim(), change: fix.change.trim() });
+}
+
+// The UI promises "Top 3 actions"; a usable asset should always get three.
+// Model output is used first, then padded with deterministic, mode-aware
+// fixes so the list is never short.
+function completeTopFixes(
+  fixes: DragonPixelFix[],
+  reviewMode: ReviewMode,
+  obs: Observations
+): DragonPixelFix[] {
+  const out: DragonPixelFix[] = [];
+  fixes.forEach((fix) => pushUniqueFix(out, fix));
+
+  if (reviewMode === "iconOnly") {
+    const visible = dedupeList(obs.shelfTest?.visibleElements);
+    const lost = dedupeList(obs.shelfTest?.lostElements);
+    const primary = obs.shelfTest?.dominantElement || visible[0] || "the main icon subject";
+    pushUniqueFix(out, {
+      action: "Commit to one clear icon pattern.",
+      why: "High-performing game icons sell one dominant character, object, threat, reward, or brand mark. Several equal abstract elements read as less memorable.",
+      change: `Make ${primary} the unmistakable hero and reduce secondary effects so the icon has one clear read.`,
+    });
+    pushUniqueFix(out, {
+      action: "Optimize the icon for 32px readability.",
+      why: "Small store icons lose thin trails, tiny sparks, soft glow, and subtle edges first.",
+      change: "Enlarge the primary shapes, thicken the readable silhouette, and remove fine background details that vanish at thumbnail size.",
+    });
+    pushUniqueFix(out, {
+      action: "Strengthen the gameplay signal without adding text.",
+      why: "Game icons usually do not need the game name; the image should imply action, danger, reward, or the core mechanic.",
+      change: "Show one clearer subject-versus-obstacle, threat, or reward relationship while keeping the same style.",
+    });
+    if (lost.length > 0) {
+      pushUniqueFix(out, {
+        action: "Remove details that fail the shelf test.",
+        why: `The weakest small-size elements are: ${lost.slice(0, 3).join(", ")}.`,
+        change: "Delete or merge these into larger readable shapes instead of leaving them as separate visual noise.",
+      });
+    }
+  } else {
+    pushUniqueFix(out, {
+      action: "Make the main gameplay action readable first.",
+      why: "Store assets convert better when the player can understand the action or objective within a few seconds.",
+      change: "Increase the scale and contrast of the player, action, reward, or threat before adding decorative effects.",
+    });
+    pushUniqueFix(out, {
+      action: "Use one clear marketing message per asset.",
+      why: "Multiple competing messages weaken thumbnail readability and reduce click clarity.",
+      change: "Keep one headline or focal idea, then remove visual elements that do not support it.",
+    });
+    pushUniqueFix(out, {
+      action: "Improve store-scale contrast.",
+      why: "Assets are judged in small grids before users ever see them full-size.",
+      change: "Increase foreground/background separation and simplify busy areas near the focal point.",
+    });
+  }
+
+  const guaranteedFallbacks: DragonPixelFix[] =
+    reviewMode === "iconOnly"
+      ? [
+          {
+            action: "Tighten the focal read.",
+            why: "Icons win when one subject dominates immediately at small size.",
+            change:
+              "Scale the main subject up, tighten the crop, and reduce competing secondary effects.",
+          },
+          {
+            action: "Clean up thumbnail noise.",
+            why: "Thin trails, sparks, and soft background detail disappear first at store size.",
+            change:
+              "Remove or merge low-value tiny details so the icon holds up at 32px.",
+          },
+          {
+            action: "Improve subject separation.",
+            why: "A stronger figure/ground split makes the icon read faster on a crowded shelf.",
+            change:
+              "Increase edge contrast and simplify the background around the focal subject.",
+          },
+        ]
+      : [
+          {
+            action: "Clarify the main selling message.",
+            why: "The user should understand the core action or hook immediately.",
+            change: "Make the player action, threat, reward, or objective read first.",
+          },
+          {
+            action: "Reduce competing visual noise.",
+            why: "Too many equal elements weaken conversion clarity.",
+            change: "Remove non-essential elements that compete with the focal point.",
+          },
+          {
+            action: "Strengthen hierarchy and contrast.",
+            why: "Store assets are judged quickly and often at small size.",
+            change:
+              "Push the main focal subject forward and separate it more clearly from the background.",
+          },
+        ];
+
+  for (const fix of guaranteedFallbacks) {
+    if (out.length >= 3) break;
+    pushUniqueFix(out, fix);
+  }
+
+  while (out.length < 3) {
+    out.push({
+      action: `Additional priority fix ${out.length + 1}`,
+      why: "The UI requires three ranked actions.",
+      change:
+        reviewMode === "iconOnly"
+          ? "Tighten the focal subject, simplify clutter, and improve small-size readability."
+          : "Clarify the focal message, improve contrast, and simplify the composition.",
+    });
+  }
+
+  return out.slice(0, 3);
+}
+
+function clientReadout(obs: Observations) {
+  return {
+    shelf: {
+      visible: dedupeList(obs.shelfTest?.visibleElements).slice(0, 3),
+      lost: dedupeList(obs.shelfTest?.lostElements).slice(0, 3),
+    },
+    click: {
+      curiosity: dedupeList(obs.clickTest?.curiositySignals).slice(0, 3),
+      reward: dedupeList(obs.clickTest?.rewardSignals).slice(0, 3),
+      danger: dedupeList(obs.clickTest?.dangerSignals).slice(0, 3),
+      urgency: dedupeList(obs.clickTest?.urgencySignals).slice(0, 3),
+      blockers: dedupeList(obs.clickTest?.clickBlockers).slice(0, 3),
+    },
+    gameplay: {
+      clear: dedupeList(obs.gameplayCommunication?.understoodIn3Seconds).slice(0, 3),
+      unclear: dedupeList(obs.gameplayCommunication?.unclearIn3Seconds).slice(0, 3),
+    },
+    emotion: {
+      present: dedupeList(obs.emotionalSignal?.currentSignals).slice(0, 3),
+      missing: dedupeList(obs.emotionalSignal?.missingSignals).slice(0, 3),
+    },
+  };
 }
 
 type ConversionRisk = {
@@ -618,6 +1083,54 @@ function calculateDragonPixelScores(
   reviewMode: ReviewMode,
   flags: { hasIcon: boolean; hasScreens: boolean; hasCreatives: boolean }
 ) {
+  if (obs.notGameAsset) {
+    const scores = {
+      shelfReadability: 0,
+      clickPull: 0,
+      gameplayClarity: 0,
+      emotionalSignal: 0,
+      marketingConfidence: 0,
+      visualPolish: 0,
+    };
+    const breakdown = [
+      { key: "shelfReadability", label: "Shelf Readability", value: "Not a game asset", assessed: false },
+      { key: "clickPull", label: "Click Pull", value: "Not a game asset", assessed: false },
+      { key: "gameplayClarity", label: "Gameplay Clarity", value: "Not a game asset", assessed: false },
+      { key: "emotionalSignal", label: "Emotional Signal", value: "Not a game asset", assessed: false },
+      { key: "marketingConfidence", label: "Marketing Confidence", value: "Not a game asset", assessed: false },
+      { key: "visualPolish", label: "Visual Polish", value: "Not a game asset", assessed: false },
+    ];
+
+    return {
+      reviewMode,
+      reviewModeLabel: REVIEW_MODE_LABEL[reviewMode],
+      reviewModeNote: "The upload does not appear to be a game store asset.",
+      reviewNoun: "Asset",
+      scores,
+      breakdown,
+      launchScore: 0,
+      potentialAfterFixes: 0,
+      conversionRisk: {
+        assessed: true,
+        level: "High" as const,
+        position: 95,
+        reason: "This upload does not look like a usable game store asset.",
+      },
+      storeImpact: { headline: "Not usable as a store asset", tone: "bad" as const },
+      decision: {
+        label: "DO NOT USE",
+        tone: "bad" as const,
+        sub: "Upload an icon, screenshot, capsule, or feature graphic.",
+      },
+      summaryLine: obs.finalCall || "Upload a real game store asset to get a useful review.",
+      strengths: [],
+      weaknesses: [obs.finalCall || "This does not read as game store creative."],
+      biggestProblem: obs.finalCall || "Not a game store asset.",
+      topFixes: [],
+      revisionBrief: "",
+    };
+  }
+
   const text = collectFreeText(obs);
   const len = (arr?: readonly unknown[]) => (Array.isArray(arr) ? arr.length : 0);
   const cap = (count: number, max = 3) => Math.min(count, max);
@@ -767,22 +1280,25 @@ function calculateDragonPixelScores(
 
   const weights = weightsByMode[reviewMode];
 
-  let launchScore = 0;
+  let weightedScore = 0;
   let totalWeight = 0;
   for (const [key, weight] of Object.entries(weights) as [
     keyof typeof scores,
     number
   ][]) {
     if (!assessedByKey[key]) continue; // skip categories we can't honestly assess
-    launchScore += (scores[key] / 100) * weight;
+    weightedScore += (scores[key] / 100) * weight;
     totalWeight += weight;
   }
 // Headline ceiling: the per-category ceilings already reserve the top band for a
 // real benchmark pass. Extend that to the overall number — a free tool showing
 // 100/100 reads as amateur, so launch and potential top out at 95.
-launchScore = Math.min(
+// The final score is owned entirely by the deterministic scoring engine.
+// Gemini provides observations only; its self-reported score is ignored so the
+// same asset does not swing between runs.
+const launchScore = Math.min(
   95,
-  roundToNearestFive(clampScore(totalWeight > 0 ? (launchScore / totalWeight) * 100 : 0))
+  roundToNearestFive(clampScore(totalWeight > 0 ? (weightedScore / totalWeight) * 100 : 0))
 );
 
 const potentialAfterFixes = Math.min(
@@ -830,11 +1346,14 @@ const potentialAfterFixes = Math.min(
     gameplayAssessed
   );
   const storeImpact = computeStoreImpact(conversionRisk);
-  const biggestProblem =
+  const iconOnlyReview = reviewMode === "iconOnly";
+  const rawBiggestProblem =
     dedupeList(obs.whatHurtsConversion)[0] || obs.finalCall || "";
-  const topFixes = (obs.dragonPixelFixes || [])
-    .filter((f, i, arr) => arr.findIndex((g) => g.action === f.action) === i)
-    .slice(0, 3);
+  const biggestProblem = iconOnlyReview ? makeIconSafeText(rawBiggestProblem) : rawBiggestProblem;
+  const rawFixes = iconOnlyReview
+    ? iconSafeFixes(obs.dragonPixelFixes || [])
+    : obs.dragonPixelFixes || [];
+  const topFixes = completeTopFixes(rawFixes, reviewMode, obs);
 
   const reviewNoun =
     hasIcon && !hasScreens && !hasCreatives
@@ -866,8 +1385,19 @@ const potentialAfterFixes = Math.min(
     strongest && weakest && strongest !== weakest
       ? `Strong ${strongest.toLowerCase()}, ${weakWord} ${weakest.toLowerCase()}.`
       : obs.finalCall || "";
-  const strengths = dedupeList(obs.whatWorks).slice(0, 3);
-  const weaknesses = dedupeList(obs.whatHurtsConversion).slice(0, 3);
+  const strengths = (iconOnlyReview ? iconSafeList(obs.whatWorks) : dedupeList(obs.whatWorks)).slice(0, 3);
+  const weaknesses = (iconOnlyReview ? iconSafeList(obs.whatHurtsConversion) : dedupeList(obs.whatHurtsConversion)).slice(0, 3);
+  const revisionBrief = iconOnlyReview
+    ? iconSafeRevisionBrief(obs)
+    : dedupeList(
+        [
+          ...topFixes.map((fix) => fix.change || fix.action),
+          obs.revisionBrief || "",
+        ].filter(Boolean)
+      )
+        .slice(0, 6)
+        .join("\n");
+  const editPlan = iconOnlyReview ? iconEditPlan(obs) : fallbackEditPlan(obs, topFixes);
 
   return {
     reviewMode,
@@ -886,6 +1416,8 @@ const potentialAfterFixes = Math.min(
     weaknesses,
     biggestProblem,
     topFixes,
+    revisionBrief,
+    editPlan,
   };
 }
 
@@ -1011,138 +1543,42 @@ export async function POST(req: Request) {
       );
     }
 
+    const platform = platformValue(formData.get("platform"));
+    const gameContext = stringValue(formData.get("gameContext")) || "";
 
+    const assetMetas: AnalyzerAssetMeta[] = [];
+    const assetHashes: string[] = [];
+    const imageParts: Part[] = [];
 
-    const parts: Part[] = [
-      {
-        text: `
-You are Dragon Pixel Store Analyzer.
-
-You do NOT score.
-
-Your job is observation only.
-
-You inspect mobile game store assets like:
-- a mobile game creative director
-- a store conversion specialist
-- a UA manager
-- an art director
-
-Return ONLY valid JSON.
-No markdown.
-No explanations outside JSON.
-No trailing commas.
-
-Observe the uploaded assets through the Dragon Pixel framework.
-
-Do not give generic advice.
-Do not compare to specific top games unless the visual evidence strongly supports it.
-Do not invent gameplay that is not visible.
-Do not praise polish unless it clearly helps conversion.
-Do not say "some screenshots" vaguely. Identify the asset.
-
-Return this exact JSON shape. Set booleans based only on visible evidence, not on the default values shown here:
-
-{
-  "shelfTest": {
-    "visibleElements": [],
-    "lostElements": [],
-    "dominantElement": "",
-    "focalPointClear": false,
-    "playerOrMainSubjectVisible": false,
-    "smallSizeRisk": false
-  },
-  "clickTest": {
-    "curiositySignals": [],
-    "rewardSignals": [],
-    "dangerSignals": [],
-    "urgencySignals": [],
-    "clickBlockers": []
-  },
-  "gameplayCommunication": {
-    "understoodIn3Seconds": [],
-    "unclearIn3Seconds": [],
-    "objectiveClear": false,
-    "playerActionClear": false,
-    "rewardClear": false,
-    "failureStateClear": false
-  },
-  "emotionalSignal": {
-    "currentSignals": [],
-    "missingSignals": []
-  },
-  "polish": {
-    "strengths": [],
-    "weaknesses": [],
-    "commercialPolish": "medium"
-  },
-  "consistency": {
-    "iconMatchesScreenshots": false,
-    "notes": ""
-  },
-  "assetReview": [
-    {
-      "assetName": "Icon",
-      "mainObservation": "",
-      "mainIssue": "",
-      "bestFix": ""
-    }
-  ],
-  "whatWorks": [],
-  "whatHurtsConversion": [],
-  "dragonPixelFixes": [
-    {
-      "action": "",
-      "why": "",
-      "change": ""
-    }
-  ],
-  "marketingRiskSummary": "",
-  "finalCall": ""
-}
-
-Observation rules:
-
-Shelf test (ICON ONLY):
-- The shelf test describes the APP ICON only, because only the icon is shown at 32px in a store. Each image below is labelled.
-- If NO icon image was provided, you MUST return empty arrays for shelfTest.visibleElements and shelfTest.lostElements, an empty string for dominantElement, and false for focalPointClear, playerOrMainSubjectVisible, and smallSizeRisk. Never run the shelf test on a screenshot.
-- When an icon IS provided: identify what survives at 32px, what disappears at 32px, where the eye lands first, whether glow overpowers the subject, and whether the player/main subject is lost.
-
-Click test:
-- Identify what creates curiosity.
-- Identify what creates reward anticipation.
-- Identify what creates danger, urgency, tension, mastery, or satisfaction.
-- Identify what blocks the click.
-
-Gameplay communication:
-- State what a cold user understands in 3 seconds.
-- State what remains unclear in 3 seconds.
-- Be specific about objective, player action, reward, threat, and progression.
-
-Dragon Pixel fixes:
-- Return 3 to 5 fixes. Each fix is an object with three short fields:
-  - "action": a short imperative title (e.g. "Show the player action clearly"). Max ~8 words.
-  - "why": one sentence on the conversion problem it solves (e.g. "Users see the visuals but not what they do.").
-  - "change": the concrete art/capture change (e.g. "Capture a dodge, collect, near-miss, or failure moment.").
-- Order them by conversion impact, biggest first.
-- Example: { "action": "Cut the icon text", "why": "The title competes with the subject at 32px.", "change": "Remove the wordmark so the character carries the icon." }
-- For APP ICONS specifically, less text usually beats more. Do NOT default to "increase stroke" or "make the title bigger".
-- Every fix must improve click-through rate, conversion rate, install probability, or ad spend efficiency.
-
-Asset types — each image below is labelled as one of: APP ICON, SCREENSHOT, FEATURE GRAPHIC, STEAM CAPSULE, or KEY ART. Treat them correctly:
-- SCREENSHOT = in-game gameplay. Only screenshots inform gameplay clarity.
-- FEATURE GRAPHIC / STEAM CAPSULE / KEY ART = marketing creatives, not gameplay. Judge them on shelf pull, click pull, and polish; do NOT treat them as gameplay screenshots or run the icon shelf test on them.
-        `,
-      },
-    ];
+    const addPreparedAsset = (
+      meta: AnalyzerAssetMeta,
+      part: { inlineData: { mimeType: string; data: string } },
+      hash: string
+    ) => {
+      assetMetas.push(meta);
+      assetHashes.push(hash);
+      imageParts.push({
+        text: `IMAGE ${assetMetas.length}: ${meta.label}. Declared type: ${meta.providedKind}. Dimensions: ${meta.widthPx}x${meta.heightPx}px.`,
+      });
+      imageParts.push(part);
+    };
 
     if (icon) {
       const result = await prepareImagePart(icon, "Icon");
       if ("error" in result) {
         return jsonResponse({ error: result.error }, { status: 400 });
       }
-      parts.push({ text: "The following image is the APP ICON. The shelf test applies to this image." });
-      parts.push(result.part);
+      addPreparedAsset(
+        {
+          label: "APP ICON",
+          providedKind: "icon",
+          widthPx: result.dimensions.width,
+          heightPx: result.dimensions.height,
+          fileName: icon.name,
+        },
+        result.part,
+        result.hash
+      );
     }
 
     for (let i = 0; i < screenshots.length; i++) {
@@ -1150,8 +1586,17 @@ Asset types — each image below is labelled as one of: APP ICON, SCREENSHOT, FE
       if ("error" in result) {
         return jsonResponse({ error: result.error }, { status: 400 });
       }
-      parts.push({ text: `The following image is SCREENSHOT ${i + 1} (not an icon — do not run the shelf test on it).` });
-      parts.push(result.part);
+      addPreparedAsset(
+        {
+          label: `SCREENSHOT ${i + 1}`,
+          providedKind: "screenshot",
+          widthPx: result.dimensions.width,
+          heightPx: result.dimensions.height,
+          fileName: screenshots[i].name,
+        },
+        result.part,
+        result.hash
+      );
     }
 
     for (let i = 0; i < creatives.length; i++) {
@@ -1160,19 +1605,73 @@ Asset types — each image below is labelled as one of: APP ICON, SCREENSHOT, FE
       if ("error" in result) {
         return jsonResponse({ error: result.error }, { status: 400 });
       }
-      parts.push({
-        text: `The following image is a ${label} (marketing creative, not gameplay; do not run the icon shelf test on it).`,
-      });
-      parts.push(result.part);
+      addPreparedAsset(
+        {
+          label,
+          providedKind:
+            label === "FEATURE GRAPHIC"
+              ? "featureGraphic"
+              : label === "STEAM CAPSULE"
+                ? "steamCapsule"
+                : "keyArt",
+          widthPx: result.dimensions.width,
+          heightPx: result.dimensions.height,
+          fileName: creatives[i].name,
+        },
+        result.part,
+        result.hash
+      );
     }
 
-    if (!icon) {
-      parts.push({
-        text: "No app icon was provided. Leave the shelfTest fields empty/false as instructed and base shelf-related observations on nothing.",
+    // Same image(s) + role + platform + context => identical report, served
+    // from cache. This is the real consistency fix: a re-run of the same asset
+    // no longer re-queries Gemini, so the score cannot drift between runs.
+    const reviewMode = getReviewMode(
+      Boolean(icon),
+      screenshots.length + creatives.length
+    );
+    const cacheKey = makeAnalysisCacheKey({
+      platform,
+      gameContext: gameContext.trim(),
+      reviewMode,
+      assets: assetMetas.map((meta, i) => ({
+        kind: meta.providedKind,
+        width: meta.widthPx,
+        height: meta.heightPx,
+        hash: assetHashes[i],
+      })),
+    });
+
+    const cached = await redis
+      .get<Record<string, unknown>>(cacheKey)
+      .catch((err) => {
+        console.error("analysis cache read failed", err);
+        return null;
       });
+    if (
+      cached &&
+      typeof cached === "object" &&
+      typeof (cached as { calculated?: { launchScore?: unknown } }).calculated
+        ?.launchScore === "number"
+    ) {
+      return jsonResponse(cached as JsonBody);
     }
 
-        const global = await globalRatelimit.limit("global");
+    const parts: Part[] = [
+      {
+        text: buildAnalyzerPrompt({
+          assets: assetMetas,
+          platform,
+          gameContext,
+          hasIcon: Boolean(icon),
+          hasScreenshots: screenshots.length > 0,
+          hasCreatives: creatives.length > 0,
+        }),
+      },
+      ...imageParts,
+    ];
+
+    const global = await globalRatelimit.limit("global");
     if (!global.success) {
       return jsonResponse(
         {
@@ -1183,24 +1682,39 @@ Asset types — each image below is labelled as one of: APP ICON, SCREENSHOT, FE
       );
     }
 
-const response = await ai.models.generateContent({
-  model: "gemini-2.5-flash",
-  contents: [{ role: "user", parts }],
-  config: {
-    temperature: 0,
-    topP: 0.1,
-    topK: 1,
-    candidateCount: 1,
-    responseMimeType: "application/json",
-  },
-});
+    const reportMeter = await getCreditStore().reserveReport(
+      callerKey(req),
+      3,
+      `free:${dailyReportPeriod()}`
+    );
+    if (!reportMeter.success) {
+      return jsonResponse(
+        {
+          error:
+            "You've used today's 3 free analysis reports. Upgrade when checkout is enabled or try again tomorrow.",
+        },
+        { status: 429 }
+      );
+    }
+
+    const response = await ai.models.generateContent({
+      model: "gemini-2.5-flash",
+      contents: [{ role: "user", parts }],
+      config: {
+        temperature: 0,
+        topP: 0.1,
+        topK: 1,
+        candidateCount: 1,
+        responseMimeType: "application/json",
+      },
+    });
 
     const rawText = response.text || "";
 
     let parsed: unknown;
 
     try {
-      parsed = JSON.parse(cleanGeminiJson(rawText));
+      parsed = parseAnalyzerReply(rawText);
     } catch {
       return jsonResponse(
         {
@@ -1222,10 +1736,6 @@ const response = await ai.models.generateContent({
       );
     }
 
-    const reviewMode = getReviewMode(
-      Boolean(icon),
-      screenshots.length + creatives.length
-    );
     const calculated = calculateDragonPixelScores(observations, reviewMode, {
       hasIcon: Boolean(icon),
       hasScreens: screenshots.length > 0,
@@ -1233,11 +1743,20 @@ const response = await ai.models.generateContent({
     });
     const verdict = verdictFromScore(calculated.launchScore);
 
-    return jsonResponse({
+    const payload = {
       observations,
       calculated,
       verdict,
-    });
+      ...clientReadout(observations),
+    };
+
+    await redis
+      .set(cacheKey, payload, { ex: ANALYSIS_CACHE_TTL_SECONDS })
+      .catch((err) => {
+        console.error("analysis cache write failed", err);
+      });
+
+    return jsonResponse(payload);
   } catch (err: unknown) {
     console.error("Analyze API error:", err);
 

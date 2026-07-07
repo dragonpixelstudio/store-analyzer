@@ -4,21 +4,21 @@ import { CONTACT_EMAIL, PageShell, PolicySection } from "@/app/components/SiteCh
 
 export const metadata: Metadata = {
   title: "Contact | Dragon Pixel Store Analyzer",
-  description: "Contact Dragon Pixel Studio for Store Analyzer support, paid reports, and billing questions.",
+  description: "Contact Dragon Pixel Studio for Store Analyzer support, billing, refunds, and product questions.",
 };
 
 export default function ContactPage() {
   return (
     <PageShell
       eyebrow="Contact"
-      title="Talk to Dragon Pixel Studio"
-      intro="Use this page for paid report requests, Paddle verification questions, delivery issues, refunds, and support."
+      title="Store Analyzer Support"
+      intro="Use this page for account support, Paddle verification questions, billing, refunds, and product questions."
     >
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="rounded-2xl border border-[rgba(24,224,255,.26)] bg-[rgba(24,224,255,.055)] p-5">
           <h2 className="font-brand text-[19px] font-semibold">Email support</h2>
           <p className="mt-3 text-[14.5px] font-medium leading-7 text-[var(--text-2)]">
-            For orders, paid reports, billing, refund requests, or general support, email:
+            For account access, billing, credit usage, refund requests, or general support, email:
           </p>
           <a
             href={`mailto:${CONTACT_EMAIL}`}
@@ -32,7 +32,7 @@ export default function ContactPage() {
           <h2 className="font-brand text-[19px] font-semibold">Useful links</h2>
           <div className="mt-4 grid gap-2 text-[14px] font-medium text-[var(--text-2)]">
             <Link href="/pricing" className="rounded-xl border border-white/10 px-4 py-3 transition hover:text-[var(--cyan)]">
-              Pricing and paid plans
+              Pricing and plans
             </Link>
             <Link href="/refund-policy" className="rounded-xl border border-white/10 px-4 py-3 transition hover:text-[var(--cyan)]">
               Refund policy
@@ -63,8 +63,7 @@ export default function ContactPage() {
 
       <PolicySection title="Response time">
         <p>
-          Dragon Pixel Studio aims to respond to support and paid-service messages within 1 to 2
-          business days.
+          Dragon Pixel Studio aims to respond to support messages within 1 to 2 business days.
         </p>
       </PolicySection>
     </PageShell>

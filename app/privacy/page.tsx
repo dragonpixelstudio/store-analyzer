@@ -3,7 +3,7 @@ import { CONTACT_EMAIL, PageShell, PolicySection } from "@/app/components/SiteCh
 
 export const metadata: Metadata = {
   title: "Privacy Policy | Dragon Pixel Store Analyzer",
-  description: "Privacy policy for Dragon Pixel Store Analyzer uploads, reports, and paid beta services.",
+  description: "Privacy policy for Dragon Pixel Store Analyzer uploads, reports, and AI generation features.",
 };
 
 export default function PrivacyPage() {
@@ -23,7 +23,7 @@ export default function PrivacyPage() {
           <li>Uploaded game icons, screenshots, feature graphics, capsules, or key art.</li>
           <li>Analysis outputs, scores, review text, and technical request metadata.</li>
           <li>IP address and basic request data used for security, abuse prevention, and rate limits.</li>
-          <li>Email address, order details, and support messages if you contact us or buy a paid service.</li>
+          <li>Email address, order details, account information, and support messages if you contact us or buy a paid plan.</li>
           <li>Payment and receipt information handled by Paddle after checkout is enabled.</li>
         </ul>
       </PolicySection>
@@ -32,7 +32,7 @@ export default function PrivacyPage() {
         <p>We use collected information to:</p>
         <ul className="list-disc space-y-2 pl-5">
           <li>Generate the store creative analysis you requested.</li>
-          <li>Deliver paid reports or beta store-asset services.</li>
+          <li>Generate improved asset variants, exports, and saved project views.</li>
           <li>Respond to support, billing, refund, and product questions.</li>
           <li>Protect the service from misuse, spam, high-volume abuse, or technical failures.</li>
           <li>Improve the clarity and reliability of the analyzer.</li>
@@ -55,8 +55,9 @@ export default function PrivacyPage() {
         <p>
           The free analyzer is designed to use uploaded files for the current review request. It
           does not intentionally publish your uploaded images or store them as public assets.
-          Paid-service requests may require retaining submitted materials long enough to complete
-          the report, handle support, and maintain order records.
+          Paid plan features may require retaining submitted materials, generated variants, project
+          settings, and usage records so saved projects, exports, support, refunds, and account
+          limits work correctly.
         </p>
       </PolicySection>
 
@@ -71,15 +72,16 @@ export default function PrivacyPage() {
       <PolicySection title="6. Data retention">
         <p>
           Analysis request data is kept only as long as needed for operation, debugging, security,
-          and service improvement. Paid order records, support messages, invoices, and delivery
-          records may be retained for business, tax, refund, and dispute-handling reasons.
+          and service improvement. Paid account records, support messages, invoices, credit usage,
+          and generated-output records may be retained for business, tax, refund, and dispute
+          handling reasons.
         </p>
       </PolicySection>
 
       <PolicySection title="7. Your choices">
         <p>
           You can ask to access, correct, or delete personal information associated with your
-          support or paid-service records, subject to legal, security, and accounting requirements.
+          support or paid account records, subject to legal, security, and accounting requirements.
           To make a request, contact us by email.
         </p>
       </PolicySection>

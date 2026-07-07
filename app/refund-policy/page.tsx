@@ -3,15 +3,15 @@ import { CONTACT_EMAIL, PageShell, PolicySection } from "@/app/components/SiteCh
 
 export const metadata: Metadata = {
   title: "Refund Policy | Dragon Pixel Store Analyzer",
-  description: "Refund policy for Dragon Pixel Store Analyzer paid reports and beta store asset packs.",
+  description: "Refund policy for Dragon Pixel Store Analyzer subscriptions and generation credits.",
 };
 
 export default function RefundPolicyPage() {
   return (
     <PageShell
       eyebrow="Refund Policy"
-      title="Refunds for paid beta services"
-      intro="The free analyzer has no charge. Paid reports and store-asset services are digital services, so the refund rules are clear before purchase."
+      title="Refunds for subscriptions and credits"
+      intro="The free analyzer has no charge. Paid plans and generation credits are digital software access, so the refund rules are clear before purchase."
     >
       <p className="mb-7 text-[13px] font-medium text-[var(--text-4)]">
         Effective date: July 1, 2026
@@ -24,28 +24,29 @@ export default function RefundPolicyPage() {
         </p>
       </PolicySection>
 
-      <PolicySection title="2. Paid reports and store packs">
+      <PolicySection title="2. Paid plans and credits">
         <p>
-          Paid services are manual digital services. You may request a refund within 7 days of
-          purchase by emailing the order email, receipt ID, and reason for the request.
+          Paid subscriptions provide metered analysis reports, generation credits, and export
+          features. You may request a refund within 7 days of purchase by emailing the order email,
+          receipt ID, and reason for the request.
         </p>
       </PolicySection>
 
       <PolicySection title="3. When a refund is usually available">
         <ul className="list-disc space-y-2 pl-5">
           <li>You were charged twice for the same order.</li>
-          <li>You paid but Dragon Pixel Studio cannot deliver the purchased service.</li>
-          <li>You request cancellation before manual work has started.</li>
-          <li>The delivered report is materially different from the paid plan description.</li>
+          <li>You paid but account access or purchased credits were not made available.</li>
+          <li>An API failure or timeout consumed credits without delivering an image variant.</li>
+          <li>The paid plan materially differs from the description on the pricing page.</li>
         </ul>
       </PolicySection>
 
       <PolicySection title="4. When a refund may be declined">
         <ul className="list-disc space-y-2 pl-5">
-          <li>The paid report or digital deliverable has already been completed and delivered.</li>
+          <li>Credits were used for successfully delivered generated image variants.</li>
           <li>The request is based only on a hoped-for download, ranking, approval, or revenue outcome.</li>
-          <li>The order cannot be completed because required assets, context, or permissions were not provided.</li>
-          <li>The request is made after the 7-day refund window without a clear delivery issue.</li>
+          <li>The generated output followed your supplied assets, prompt, and revision brief.</li>
+          <li>The request is made after the 7-day refund window without a clear account, credit, or output issue.</li>
         </ul>
       </PolicySection>
 
