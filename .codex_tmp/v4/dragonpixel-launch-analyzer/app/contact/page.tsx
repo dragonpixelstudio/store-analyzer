@@ -12,7 +12,7 @@ export default function ContactPage() {
     <PageShell
       eyebrow="Contact"
       title="Store Analyzer Support"
-      intro="Use this page for account support, billing, refunds, and product questions."
+      intro="Use this page for account support, Paddle verification questions, billing, refunds, and product questions."
     >
       <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
         <div className="rounded-2xl border border-[rgba(24,224,255,.26)] bg-[rgba(24,224,255,.055)] p-5">
@@ -55,7 +55,7 @@ export default function ContactPage() {
       <PolicySection title="What to include">
         <ul className="list-disc space-y-2 pl-5">
           <li>Your game name and store link if available.</li>
-          <li>The email used for your order or receipt.</li>
+          <li>The email used for your order or Paddle receipt.</li>
           <li>A short description of what you need help with.</li>
           <li>For refund requests, include the purchase date and reason.</li>
         </ul>

@@ -85,16 +85,6 @@ OUTPUT SCHEMA:
     }
   ],
   "revision_brief": "",
-  "edit_plan": {
-    "mode": "conservative_polish",
-    "edit_strength": "clear",
-    "preserve": [],
-    "required_edits": [],
-    "forbidden_changes": [],
-    "success_checks": [],
-    "variant_1_mode": "Faithful improvement",
-    "variant_2_mode": "Stronger improvement, still same concept"
-  },
   "marketingRiskSummary": "",
   "finalCall": ""
 }
@@ -127,11 +117,7 @@ Type-specific expectations:
 - Screenshot: gameplay clarity matters most. Player, action, objective, reward,
   threat, or failure state should read in three seconds.
 - Steam capsules: brand readability, focal hierarchy, genre clarity, and hook
-  matter most. Mentally test at 50% scale (library/list size) and in a cropped
-  center strip. NEVER evaluate a capsule at icon thumbnail sizes (32-72px);
-  capsules are never displayed that small. Do not report "very small thumbnail
-  size" weaknesses for capsules; if a detail weakens the read, state it at
-  library scale (roughly half size) instead.
+  matter most. Mentally test at 50% scale and in a cropped center strip.
 - Feature graphics/key art: fast genre read, hook, brand clarity, and polish.
 
 Hard rules:
@@ -142,42 +128,11 @@ Hard rules:
   icon lacks a game title, judge whether the icon mark itself is memorable; do
   not call the missing title a weakness.
 - priority_fixes must be ordered by conversion impact. Use title, why, change.
-- priority_fixes are strategic human recommendations for the report UI. They
-  may include broader direction changes when the asset concept itself is weak.
-- revision_brief is a short human-readable summary only.
-- edit_plan is the ONLY field intended for AI image editing. It must be
-  conservative and production-safe.
-- edit_plan.mode must be "conservative_polish" unless the user explicitly asks
-  for a new concept. Use "concept_upgrade" only when the existing concept is
-  fundamentally too generic and broader replacement is needed.
-- edit_plan.edit_strength must be "clear" by default. Do not use "subtle" for
-  paid/generated fixes; users must notice the improvement.
-- edit_plan.preserve must name the subject, palette family, art style, and
-  composition idea that must stay intact.
-- edit_plan.required_edits must be concrete, visual, and low-risk: scale up
-  subject, tighten crop, simplify background, reduce thin trails, improve edge
-  contrast, strengthen silhouette, remove clutter, separate figure from
-  background, and improve small-size readability.
-- edit_plan.forbidden_changes must explicitly block redesign behavior: do not
-  replace the core subject, do not swap shapes for different objects, do not add
-  title text, do not add logos, do not invent new characters, do not invent new
-  mechanics, do not change perspective, and do not change the art style.
-- edit_plan.success_checks must define how to judge the generation: clearer at
-  target store size, same concept, visible improvement, and brief adherence.
-- edit_plan.variant_1_mode must describe a faithful improvement strategy.
-- edit_plan.variant_2_mode must describe a stronger improvement strategy that
-  still preserves the same concept.
-- For icon-only reviews, do NOT put conceptual redesign ideas into edit_plan.
-  If the icon needs a bigger conceptual shift, say that in priority_fixes only.
-- For icon-only edit_plan, target the complete readable subject group, not a
-  tiny internal highlight, glow core, spark, or background effect.
-- For icon-only edit_plan, use numeric targets where possible: focal event
-  roughly 72-80% of the square canvas, trail reduction roughly 20-35%, sparks
-  reduced to 3-5 readable accents, background detail reduced to support only,
-  and no more than 2 primary subjects unless locked by the source.
-- revision_brief must be 3-6 short lines. Each line must name a visible element
-  and a concrete issue or edit. Avoid vague lines like "improve readability",
-  "add polish", "consider visual cues", or "make it more iconic".
+- revision_brief must be 3-6 short imperative image-edit lines. Each line must
+  name a visible element and a concrete edit. Avoid vague lines like "improve
+  readability", "add polish", "consider visual cues", or "make it more iconic".
+  It must preserve the game's art style and branding and be directly usable by
+  an AI image edit route.
 - For icon revision_brief lines, focus on focal object, silhouette, crop,
   background separation, contrast, rim light, palette, and 32px read. Do not
   add title text, subtitles, taglines, UI labels, or small decorative text.

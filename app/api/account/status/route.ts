@@ -11,11 +11,11 @@ type AccountStatus = {
 };
 
 // TODO(paid launch): replace with a durable DB lookup keyed by the
-// authenticated user. The Paddle webhook writes plan/subscription status into
+// authenticated user. The payment provider webhook writes plan/subscription status into
 // that DB; this endpoint only reads it. The frontend must never decide
 // subscription state on its own.
 //
-// Paddle webhook -> account behavior:
+// Payment provider webhook -> account behavior:
 //   subscription created   -> set plan indie/pro, status active
 //   subscription renewed   -> grant monthly credits
 //   subscription canceled  -> keep active until period end

@@ -2,8 +2,6 @@ import { NextRequest, NextResponse } from "next/server";
 import { callerKey, ensureTrialSeed, getCreditStore } from "@/lib/credits";
 import { fixAsset, type FixRequest, violatesGuardrails } from "@/lib/gemini";
 import { fixIpRatelimit, fixGlobalRatelimit, getClientIp } from "@/lib/ratelimit";
-import sharp from "sharp";
-import { makeDeterministicIconPolish, makeDeterministicWidePolish, visibleDifferenceScore } from "@/lib/iconPolish";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -62,22 +60,6 @@ function numberValue(value: unknown, fallback: number) {
   return typeof value === "number" && Number.isFinite(value) ? value : fallback;
 }
 
-async function makeIconReadTest(buffer: Buffer) {
-  const png = await sharp(buffer)
-    .resize(32, 32, {
-      fit: "contain",
-      background: { r: 0, g: 0, b: 0, alpha: 0 },
-      kernel: sharp.kernel.lanczos3,
-    })
-    .png()
-    .toBuffer();
-
-  return {
-    base64: png.toString("base64"),
-    mimeType: "image/png",
-  };
-}
-
 export async function POST(req: NextRequest) {
   if (!isAllowedRequestOrigin(req)) {
     return NextResponse.json({ error: "Origin not allowed" }, { status: 403 });
@@ -108,9 +90,9 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  let body: Partial<FixRequest> & { variants?: number; assetScore?: number };
+  let body: Partial<FixRequest> & { variants?: number };
   try {
-    body = (await req.json()) as Partial<FixRequest> & { variants?: number; assetScore?: number };
+    body = (await req.json()) as Partial<FixRequest> & { variants?: number };
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -151,16 +133,6 @@ export async function POST(req: NextRequest) {
   }
 
   const requested = Math.min(Math.max(numberValue(body.variants, 2), 1), 3);
-  const iconReadTest =
-    assetType === "icon"
-      ? await makeIconReadTest(buffer).catch((err: unknown) => {
-          console.error(
-            "icon read-test generation failed:",
-            err instanceof Error ? err.message : "unknown error"
-          );
-          return null;
-        })
-      : null;
   const credits = getCreditStore();
   const key = callerKey(req);
   await ensureTrialSeed(key);
@@ -183,69 +155,21 @@ export async function POST(req: NextRequest) {
   const variants: { base64: string; mimeType: string }[] = [];
   let hardError: string | null = null;
 
-  // Every visual asset gets one deterministic, guaranteed-visible fix as
-  // Variant 1 (icons: square saliency crop; capsules/feature graphics:
-  // aspect-preserving saliency crop). Screenshots are excluded because
-  // cropping risks cutting gameplay UI. Remaining slots go to the Gemini
-  // designer pass behind a visible-difference gate.
-  if (assetType !== "screenshot" && requested > 0) {
+  for (let i = 0; i < requested; i++) {
     try {
-      const polished =
-        assetType === "icon"
-          ? await makeDeterministicIconPolish(buffer, "controlled")
-          : await makeDeterministicWidePolish(buffer, "controlled");
-      variants.push({ base64: polished.base64, mimeType: polished.mimeType });
-    } catch (err: unknown) {
-      console.error(
-        "deterministic polish failed:",
-        err instanceof Error ? err.message : "unknown error"
+      const output = await fixAsset(
+        {
+          assetType,
+          platform,
+          imageBase64,
+          mimeType: sniffedMime,
+          analysisNotes: body.analysisNotes,
+          userInstruction: body.userInstruction,
+          variantIndex: i,
+        },
+        apiKey
       );
-    }
-  }
-
-  const MIN_VISIBLE_DIFF = 7; // near-copies score <5 on 0-255; real edits score 10+
-
-  for (let i = variants.length; i < requested; i++) {
-    try {
-      let output: { base64: string; mimeType: string } | null = null;
-      // Visible-difference gate with one escalation retry: a near-copy is a
-      // failed result, never delivered, never charged.
-      for (let attempt = 0; attempt < 2 && !output; attempt++) {
-        const candidate = await fixAsset(
-          {
-            assetType,
-            platform,
-            imageBase64,
-            mimeType: sniffedMime,
-            iconReadTestBase64: iconReadTest?.base64,
-            iconReadTestMimeType: iconReadTest?.mimeType,
-            analysisNotes: body.analysisNotes,
-            userInstruction:
-              attempt === 0
-                ? body.userInstruction
-                : [
-                    body.userInstruction,
-                    "PREVIOUS ATTEMPT FAILED: the output was a near-copy of the input. Apply every mandatory edit dramatically; the result must be unmistakably different at a glance.",
-                  ]
-                    .filter(Boolean)
-                    .join(" "),
-            variantIndex: i,
-            assetScore: typeof body.assetScore === "number" ? body.assetScore : undefined,
-          },
-          apiKey
-        );
-        const diff = await visibleDifferenceScore(buffer, candidate.base64).catch(() => 99);
-        if (diff >= MIN_VISIBLE_DIFF) {
-          output = candidate;
-        } else {
-          console.warn(
-            `variant ${i} attempt ${attempt} near-copy (diff=${diff.toFixed(1)}), ${attempt === 0 ? "retrying with escalation" : "dropping for refund"}`
-          );
-        }
-      }
-      if (output) {
-        variants.push(output);
-      }
+      variants.push(output);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Generation failed";
       console.error("fix variant error:", message);

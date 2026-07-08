@@ -14,6 +14,8 @@ export type FixRequest = {
   userInstruction?: string;
   /** 0-based variant index; changes edit intensity so variants differ meaningfully. */
   variantIndex?: number;
+  /** Analyzer launch score (0-100). Steers designer judgment: strong assets get refinement, weak assets get bolder recomposition. */
+  assetScore?: number;
 };
 
 const BLOCKED_PATTERNS: RegExp[] = [
@@ -286,12 +288,24 @@ export async function fixAsset(req: FixRequest, apiKey: string) {
   ]);
   const hasIconReadTest = req.assetType === "icon" && !!req.iconReadTestBase64;
 
+  // Designer judgment: the generation acts as a senior game marketing artist,
+  // not a filter. A strong asset earns surgical refinement; a weak asset earns
+  // a bolder recomposition of the SAME concept. The analyzer score steers this
+  // so the model does not over-edit good work or under-edit weak work.
+  const score = typeof req.assetScore === "number" ? req.assetScore : null;
+  const designJudgment =
+    score === null
+      ? `DESIGN JUDGMENT: First assess the asset like a senior game marketing artist. If it already works and only needs polish, make surgical refinements. If its shelf read is weak, recompose more boldly within the same concept.`
+      : score >= 70
+        ? `DESIGN JUDGMENT: The analyzer scored this asset ${score}/100 - it already works. Act as a senior artist doing a refinement pass: surgical improvements only (scale, crop, contrast, cleanup). Do not redesign what is not broken.`
+        : `DESIGN JUDGMENT: The analyzer scored this asset ${score}/100 - the shelf read is weak. Act as a senior artist doing a concept-strengthening pass: recompose boldly using the SAME subjects, palette, and idea. Bigger focal commitment, cleaner staging, stronger silhouette. Same concept, executed like a top-grossing icon.`;
+
   const variantStyle =
     (req.variantIndex ?? 0) === 0
       ? `VARIANT STYLE: ${contract.variant1Mode ?? "Faithful improvement: preserve layout closely, enlarge the focal event moderately, reduce clutter slightly, and keep most original energy."} Preserve 85-90% of the original concept. The difference must be visible through cleaner crop, scale, silhouette, contrast, and detail reduction; do not settle for a near-copy glow tweak.`
       : (req.variantIndex ?? 0) === 1
-        ? `VARIANT STYLE: ${contract.variant2Mode ?? "Stronger improvement: tighten the crop more, simplify small details more aggressively, reduce trails/sparks harder, and push silhouette clarity while keeping the same concept."} Push scale, edge contrast, clutter removal, and thumbnail readability harder than Variant 1 while preserving the same subjects and concept. No new focal objects.`
-        : "VARIANT STYLE: Alternative polish. Offer a different but still faithful improvement pass on the same asset.";
+        ? `VARIANT STYLE: Designer pass. ${designJudgment} Every mandatory edit still applies. The result must be clearly distinct from a light polish of the original.`
+        : "VARIANT STYLE: Alternative designer take. Offer a different composition emphasis on the same subjects and palette.";
 
   const strictOutput =
     req.assetType === "icon"

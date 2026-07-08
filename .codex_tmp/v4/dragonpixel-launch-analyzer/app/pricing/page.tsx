@@ -53,7 +53,7 @@ const plans = [
                             ],
     href: "/contact",
     cta: "Go Pro",
-    microcopy: "Cancel anytime. Monthly credits reset each billing cycle.",
+    microcopy: "Cancel anytime.",
   },
 ];
 
@@ -181,7 +181,7 @@ export default function PricingPage() {
             </div>
           </div>
           <p className="mt-4 rounded-xl border border-[var(--edge)] bg-black/20 p-3 text-[13px] font-semibold leading-6 text-[var(--text-2)]">
-            Includes {oneTimeFix.credits}. A typical generation run produces 2 variants,
+            Includes {oneTimeFix.credits}. A typical Fix with AI click produces 2 variants,
             so this is enough for up to three focused generation attempts. It is intentionally
             higher per credit than Indie or Pro, so monthly plans remain the better choice for
             a full store-page polish.
@@ -215,7 +215,7 @@ export default function PricingPage() {
       <PolicySection title="Mini FAQ">
         <p>
           <strong>What costs a credit?</strong> One successfully generated image variant. A
-          typical generation run produces 2 variants, so it costs 2 credits, shown before
+          typical Fix with AI click produces 2 variants, so it costs 2 credits, shown before
           you click. Exports and resizing are free once an image exists.
         </p>
         <p>

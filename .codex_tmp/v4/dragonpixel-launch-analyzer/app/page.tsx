@@ -65,14 +65,6 @@ const PACKS: {
   },
 ];
 
-type AccountPlan = "free" | "quick" | "indie" | "pro";
-
-type AccountStatus = {
-  plan: AccountPlan;
-  isSubscriber: boolean;
-  credits?: { remaining?: number };
-};
-
 type Role = "icon" | "screenshot" | "featureGraphic" | "steamCapsule" | "keyArt";
 
 const ROLE_LABELS: Record<Role, string> = {
@@ -127,17 +119,6 @@ type ClickReads = {
 type GameplayReads = { clear: string[]; unclear: string[] };
 type EmotionReads = { present: string[]; missing: string[] };
 
-type EditPlan = {
-  mode?: "conservative_polish" | "concept_upgrade";
-  editStrength?: "subtle" | "clear" | "strong";
-  preserve?: string[];
-  requiredEdits?: string[];
-  forbiddenChanges?: string[];
-  successChecks?: string[];
-  variant1Mode?: string;
-  variant2Mode?: string;
-};
-
 type AnalyzePayload = {
   error?: string;
   verdict?: string;
@@ -158,7 +139,6 @@ type AnalyzePayload = {
     biggestProblem?: string;
     topFixes?: DragonPixelFix[];
     revisionBrief?: string;
-    editPlan?: EditPlan;
   };
   shelf?: { visible: string[]; lost: string[] };
   click?: ClickReads;
@@ -241,67 +221,6 @@ function parseFixes(v: unknown): DragonPixelFix[] {
     })
     .filter((f): f is DragonPixelFix => f !== null && f.action.length > 0);
 }
-
-function parseEditPlan(v: unknown): EditPlan | undefined {
-  if (!isRecord(v)) return undefined;
-
-  const preserve = strList(v.preserve);
-  const requiredEdits = strList(v.requiredEdits);
-  const forbiddenChanges = strList(v.forbiddenChanges);
-  const successChecks = strList(v.successChecks);
-  const mode = str(v.mode);
-  const editStrength = str(v.editStrength);
-  const variant1Mode = str(v.variant1Mode);
-  const variant2Mode = str(v.variant2Mode);
-
-  if (
-    !preserve.length &&
-    !requiredEdits.length &&
-    !forbiddenChanges.length &&
-    !successChecks.length &&
-    !mode &&
-    !editStrength &&
-    !variant1Mode &&
-    !variant2Mode
-  ) {
-    return undefined;
-  }
-
-  return {
-    mode:
-      mode === "conservative_polish" || mode === "concept_upgrade"
-        ? mode
-        : undefined,
-    editStrength:
-      editStrength === "subtle" || editStrength === "clear" || editStrength === "strong"
-        ? editStrength
-        : undefined,
-    preserve,
-    requiredEdits,
-    forbiddenChanges,
-    successChecks,
-    variant1Mode,
-    variant2Mode,
-  };
-}
-
-function editPlanToText(plan: EditPlan | null): string {
-  if (!plan) return "";
-
-  return [
-    plan.mode ? `Mode: ${plan.mode}` : "",
-    plan.editStrength ? `Edit strength: ${plan.editStrength}` : "",
-    ...(plan.preserve ?? []).map((item) => `Preserve: ${item}`),
-    ...(plan.requiredEdits ?? []).map((item) => `Edit: ${item}`),
-    ...(plan.forbiddenChanges ?? []).map((item) => `Do not: ${item}`),
-    ...(plan.successChecks ?? []).map((item) => `Success check: ${item}`),
-    plan.variant1Mode ? `Variant 1 mode: ${plan.variant1Mode}` : "",
-    plan.variant2Mode ? `Variant 2 mode: ${plan.variant2Mode}` : "",
-  ]
-    .filter(Boolean)
-    .join("\n");
-}
-
 function parsePayload(raw: string): AnalyzePayload | null {
   let parsed: unknown;
   try {
@@ -329,7 +248,6 @@ function parsePayload(raw: string): AnalyzePayload | null {
         biggestProblem: str(rawCalc.biggestProblem),
         topFixes: parseFixes(rawCalc.topFixes),
         revisionBrief: str(rawCalc.revisionBrief),
-        editPlan: parseEditPlan(rawCalc.editPlan),
       }
     : undefined;
   const obs = isRecord(parsed.observations) ? parsed.observations : undefined;
@@ -750,41 +668,11 @@ export default function Home() {
   const [weaknesses, setWeaknesses] = useState<string[]>([]);
   const [topFixes, setTopFixes] = useState<DragonPixelFix[]>([]);
   const [revisionBrief, setRevisionBrief] = useState("");
-  const [editPlan, setEditPlan] = useState<EditPlan | null>(null);
   const [shelf, setShelf] = useState<{ visible: string[]; lost: string[] } | null>(null);
   const [click, setClick] = useState<ClickReads | null>(null);
   const [gameplay, setGameplay] = useState<GameplayReads | null>(null);
   const [emotion, setEmotion] = useState<EmotionReads | null>(null);
   const [error, setError] = useState("");
-  const [account, setAccount] = useState<AccountStatus | null>(null);
-
-  const refreshAccount = useCallback(async () => {
-    try {
-      const res = await fetch("/api/account/status", { cache: "no-store" });
-      if (!res.ok) return;
-      const data = await res.json();
-      if (data?.account) setAccount(data.account);
-    } catch {
-      // Never block the analyzer on account status.
-    }
-  }, []);
-
-  useEffect(() => {
-    const initial = setTimeout(() => void refreshAccount(), 0);
-    // Re-check when the tab regains focus: after checkout the user returns
-    // here and the subscribe panel must disappear immediately.
-    const onFocus = () => void refreshAccount();
-    window.addEventListener("focus", onFocus);
-    return () => {
-      clearTimeout(initial);
-      window.removeEventListener("focus", onFocus);
-    };
-  }, [refreshAccount]);
-
-  const isPaidSubscriber =
-    account?.isSubscriber === true ||
-    account?.plan === "indie" ||
-    account?.plan === "pro";
   const [dragOver, setDragOver] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
@@ -928,7 +816,6 @@ export default function Home() {
     setWeaknesses([]);
     setTopFixes([]);
     setRevisionBrief("");
-    setEditPlan(null);
     setShelf(null);
     setClick(null);
     setGameplay(null);
@@ -961,7 +848,6 @@ export default function Home() {
       setWeaknesses(data.calculated?.weaknesses ?? []);
       setTopFixes(data.calculated?.topFixes ?? []);
       setRevisionBrief(data.calculated?.revisionBrief ?? "");
-      setEditPlan(data.calculated?.editPlan ?? null);
       setShelf(data.shelf ?? null);
       setClick(data.click ?? null);
       setGameplay(data.gameplay ?? null);
@@ -990,7 +876,6 @@ export default function Home() {
     setWeaknesses([]);
     setTopFixes([]);
     setRevisionBrief("");
-    setEditPlan(null);
     setShelf(null);
     setClick(null);
     setGameplay(null);
@@ -1014,7 +899,6 @@ export default function Home() {
   const gameplayAssessed = breakdown.find((r) => r.key === "gameplayClarity")?.assessed ?? false;
   // the 32px shelf test is an icon concept; only show it when an icon was uploaded
   const previewAsset = assets.find((a) => a.role === "icon" && !a.error) || null;
-  const editPlanText = editPlanToText(editPlan) || revisionBrief;
   const impactTone =
     impact?.tone === "good" ? "var(--green)" : impact?.tone === "bad" ? "var(--magenta)" : "var(--gold)";
   const decisionTone =
@@ -1060,7 +944,7 @@ export default function Home() {
           Store Analyzer
         </h1>
         <p className="mx-auto mt-3 max-w-[560px] text-[clamp(16px,2vw,19px)] font-medium text-[var(--text-2)]">
-          The Dragon Pixel Algorithm reads your store assets, scores them, and writes the exact correction plan. Before you spend on launch.
+          Get a conversion review before you spend on launch.
         </p>
       </header>
 
@@ -1431,9 +1315,7 @@ export default function Home() {
                   ? "Fix before launch"
                   : "What to fix"}
               </div>
-              <h2 className="font-brand mt-1 text-[22px] font-semibold">
-                Top {topFixes.length} action{topFixes.length === 1 ? "" : "s"}
-              </h2>
+              <h2 className="font-brand mt-1 text-[22px] font-semibold">Top 3 actions</h2>
               <p className="mb-5 mt-1.5 text-sm font-semibold text-[var(--muted)]">
                 Ranked by impact — start at the top.
               </p>
@@ -1468,7 +1350,7 @@ export default function Home() {
           )}
 
           {revisionBrief && (
-            <ReportCard title="Dragon Pixel edit plan">
+            <ReportCard title="AI revision brief">
               <div className="rounded-xl border border-[var(--edge)] bg-black/25 p-4">
                 {revisionBriefLines.map((line, index) => (
                   <p
@@ -1481,7 +1363,7 @@ export default function Home() {
               </div>
               <GenerateVariants
                 sources={assets
-                  .filter((a) => !a.error && !a.overflow)
+                  .filter((a) => !a.error)
                   .map<GenerateSource>((a) => ({
                     id: a.id,
                     label: `${ROLE_LABELS[a.role]} · ${a.file.name}`,
@@ -1497,8 +1379,7 @@ export default function Home() {
                             : "feature-graphic",
                   }))}
                 platform={assets.some((a) => a.role === "steamCapsule") ? "steam" : "google-play"}
-                revisionBrief={editPlanText}
-                assetScore={score}
+                revisionBrief={revisionBrief}
               />
             </ReportCard>
           )}
@@ -1638,18 +1519,7 @@ export default function Home() {
             </div>
           </details>
 
-          {/* paid offer — self-serve AI fixes; hidden for active subscribers */}
-          {isPaidSubscriber && (
-            <div className="rounded-2xl border border-[rgba(105,255,0,.26)] bg-[rgba(105,255,0,.055)] p-4">
-              <div className="dpx-kicker" data-tone="cyan">
-                Active plan
-              </div>
-              <p className="mt-1 text-[13.5px] font-semibold text-[var(--muted)]">
-                You are on {account?.plan === "pro" ? "Pro" : "Indie"}. Use your generation credits above.
-              </p>
-            </div>
-          )}
-          {!isPaidSubscriber && (
+          {/* paid offer — self-serve AI fixes */}
           <div
             className="rounded-2xl border-[1.5px] p-6"
             style={{
@@ -1662,7 +1532,7 @@ export default function Home() {
               Action plan
             </div>
             <h2 className="font-brand mt-1 text-[22px] font-semibold">
-              Turn this edit plan into finished variants
+              Turn this review into AI-generated fixes
             </h2>
             <p className="mb-5 mt-1.5 text-sm font-semibold text-[var(--muted)]">
               Generate a one-off fix when you only need one asset, or use a plan when you are
@@ -1723,7 +1593,6 @@ export default function Home() {
               </span>
             </div>
           </div>
-          )}
         </section>
       )}
 
@@ -1748,7 +1617,7 @@ export default function Home() {
             {
               step: "03",
               title: "Generate Targeted Fixes",
-              text: "The edit plan drives the output: precise algorithmic corrections are applied directly, and AI renders only where new image generation is required. Compare before/after and export the winner.",
+              text: "Use the revision brief to create AI variants, compare the before/after, and export the version that improves the store asset.",
             },
           ].map((item) => (
             <article key={item.step} className="dpx-step">

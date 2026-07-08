@@ -3,7 +3,7 @@ import { CONTACT_EMAIL, PageShell, PolicySection } from "@/app/components/SiteCh
 
 export const metadata: Metadata = {
   title: "Privacy Policy | Dragon Pixel Store Analyzer",
-  description: "Privacy policy for Dragon Pixel Store Analyzer uploads, algorithmic reports, and image generation features.",
+  description: "Privacy policy for Dragon Pixel Store Analyzer uploads, reports, and AI generation features.",
 };
 
 export default function PrivacyPage() {
@@ -24,7 +24,7 @@ export default function PrivacyPage() {
           <li>Analysis outputs, scores, review text, and technical request metadata.</li>
           <li>IP address and basic request data used for security, abuse prevention, and rate limits.</li>
           <li>Email address, order details, account information, and support messages if you contact us or buy a paid plan.</li>
-          <li>Payment and receipt information handled by our payment provider after checkout is enabled.</li>
+          <li>Payment and receipt information handled by Paddle after checkout is enabled.</li>
         </ul>
       </PolicySection>
 
@@ -43,7 +43,7 @@ export default function PrivacyPage() {
         <p>
           Uploaded assets and prompt context may be sent to AI analysis providers, currently Google
           Gemini API, to produce the review. Rate limiting and security tooling may use Upstash.
-          Paid checkout and payment support will be handled by our payment provider once enabled.
+          Paid checkout and payment support will be handled by Paddle once enabled.
         </p>
         <p>
           These providers process data only as needed to support the service. Do not upload highly
@@ -64,9 +64,8 @@ export default function PrivacyPage() {
       <PolicySection title="5. Payments">
         <p>
           Dragon Pixel Studio does not ask you to enter card details directly on this website.
-          Our payment provider (a merchant of record) will handle payment details, tax calculation,
-          receipts, and payment support after checkout is enabled. The provider&apos;s own privacy
-          terms apply to payment processing.
+          Paddle will handle payment details, tax calculation, receipts, and payment support after
+          checkout is enabled. Paddle&apos;s own privacy terms apply to payment processing.
         </p>
       </PolicySection>
 

@@ -50,9 +50,9 @@ export default function RefundPolicyPage() {
         </ul>
       </PolicySection>
 
-      <PolicySection title="5. Payment processing">
+      <PolicySection title="5. Paddle payment handling">
         <p>
-          Once checkout is enabled, our payment provider may process approved refunds back to the original
+          After Paddle checkout is enabled, Paddle may process approved refunds back to the original
           payment method. Bank, card, and local payment-method timelines may vary.
         </p>
       </PolicySection>
@@ -63,7 +63,7 @@ export default function RefundPolicyPage() {
           <a className="font-bold text-[var(--cyan)] hover:underline" href={`mailto:${CONTACT_EMAIL}`}>
             {CONTACT_EMAIL}
           </a>{" "}
-          with your order email, receipt or order ID if available, purchase date, and a short reason
+          with your order email, Paddle receipt ID if available, purchase date, and a short reason
           for the request.
         </p>
       </PolicySection>

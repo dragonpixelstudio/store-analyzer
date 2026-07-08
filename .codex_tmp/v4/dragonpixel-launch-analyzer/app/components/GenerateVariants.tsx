@@ -19,8 +19,6 @@ type Props = {
   sources: GenerateSource[];
   platform: FixPlatform;
   revisionBrief: string;
-  /** Analyzer launch score; steers the designer pass (refine vs recompose). */
-  assetScore?: number;
 };
 
 const VARIANTS_PER_RUN = 2;
@@ -36,7 +34,7 @@ async function fileToBase64(file: File): Promise<{ base64: string; mimeType: str
   return { base64: btoa(binary), mimeType: file.type || "image/png" };
 }
 
-export default function GenerateVariants({ sources, platform, revisionBrief, assetScore }: Props) {
+export default function GenerateVariants({ sources, platform, revisionBrief }: Props) {
   const [selectedId, setSelectedId] = useState<string>(sources[0]?.id ?? "");
   const [remaining, setRemaining] = useState<number | null>(null);
   const [busy, setBusy] = useState(false);
@@ -82,7 +80,6 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
           analysisNotes: revisionBrief,
           userInstruction: instruction.trim() || undefined,
           variants: VARIANTS_PER_RUN,
-          assetScore,
         }),
       });
       const data = await res.json();
@@ -102,7 +99,7 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
     } finally {
       setBusy(false);
     }
-  }, [selected, platform, revisionBrief, instruction, assetScore]);
+  }, [selected, platform, revisionBrief, instruction]);
 
   const download = useCallback(
     (variant: Variant, index: number) => {
@@ -116,12 +113,10 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
 
   if (sources.length === 0) return null;
 
-  const insufficientCredits = remaining !== null && remaining < VARIANTS_PER_RUN;
-
   const costLine =
     remaining === null
-      ? `Uses ${VARIANTS_PER_RUN} credits`
-      : `Uses ${VARIANTS_PER_RUN} credits · ${remaining} available now`;
+      ? `Cost: ${VARIANTS_PER_RUN} credits`
+      : `Cost: ${VARIANTS_PER_RUN} credits · ${remaining} remaining`;
 
   return (
     <div className="mt-4 rounded-xl border border-[var(--edge)] bg-black/20 p-4">
@@ -141,27 +136,13 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
           </select>
         )}
         <button
-          type="button"
-          onClick={() => {
-            if (busy || !selected || insufficientCredits) return;
-            void run();
-          }}
-          disabled={busy || !selected || insufficientCredits}
-          aria-busy={busy}
-          data-busy={busy ? "true" : "false"}
-          className="dpx-generate-button rounded-xl px-6 py-3 text-[14.5px] font-black transition disabled:cursor-not-allowed"
+          onClick={run}
+          disabled={busy || !selected}
+          className="rounded-lg bg-[var(--cyan)] px-4 py-2 text-[13px] font-bold text-black transition disabled:opacity-50"
         >
-          <span className="inline-flex items-center gap-2">
-            {busy && <span className="dpx-mini-spinner" aria-hidden="true" />}
-            {busy ? "Generating variants" : "Generate improved versions"}
-          </span>
+          {busy ? "Generating…" : "Generate improved versions"}
         </button>
         <span className="text-[12px] font-semibold text-[var(--faint)]">{costLine}</span>
-        {insufficientCredits && (
-          <span className="text-[12px] font-semibold text-[var(--magenta)]">
-            Not enough credits for this generation.
-          </span>
-        )}
       </div>
 
       <input
@@ -173,7 +154,7 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
       />
 
       <p className="mt-2 text-[12px] font-semibold text-[var(--faint)]">
-        The Dragon Pixel Algorithm wrote this edit plan from your report. The Precision fix applies it with exact algorithmic corrections, guaranteed visible. The Designer pass acts like a senior game artist: if the asset already works it refines, and if the shelf read is weak it recomposes boldly within the same concept. You are only charged for delivered images. Works on your game&apos;s own art; people and faces are out of scope.
+        Each variant applies the revision brief above as mandatory edits: Variant 1 is a faithful pass, Variant 2 pushes the changes harder. You are only charged for images that are delivered. Works on your game&apos;s own art; people and faces are out of scope.
       </p>
 
       {error && (
@@ -205,13 +186,11 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
                   className="w-full rounded-lg border border-[var(--edge)]"
                 />
                 <figcaption className="mt-1 flex items-center justify-center gap-2 text-[11px] font-semibold text-[var(--faint)]">
-                  {i === 0 ? "Precision fix" : i === 1 ? "Designer pass" : `Variant ${i + 1}`}
+                  Variant {i + 1}
                   <button
-                    type="button"
                     onClick={() => download(v, i)}
-                    className="inline-flex items-center gap-1 rounded-full border border-[rgba(24,224,255,.34)] bg-[rgba(24,224,255,.08)] px-2.5 py-1 text-[10.5px] font-bold text-[var(--cyan)] transition hover:border-[rgba(24,224,255,.56)] hover:bg-[rgba(24,224,255,.14)]"
+                    className="rounded border border-[var(--edge)] px-2 py-0.5 text-[10.5px] font-bold text-[var(--cyan)] transition hover:bg-white/5"
                   >
-                    <span aria-hidden="true">↓</span>
                     Download
                   </button>
                 </figcaption>

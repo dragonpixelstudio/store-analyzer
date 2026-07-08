@@ -3,7 +3,7 @@ import { CONTACT_EMAIL, PageShell, PolicySection } from "@/app/components/SiteCh
 
 export const metadata: Metadata = {
   title: "Terms of Service | Dragon Pixel Store Analyzer",
-  description: "Terms of service for Dragon Pixel Store Analyzer: algorithmic asset reports, edit plans, and generation credits.",
+  description: "Terms of service for Dragon Pixel Store Analyzer analysis reports and AI generation credits.",
 };
 
 export default function TermsPage() {
@@ -54,9 +54,8 @@ export default function TermsPage() {
       <PolicySection title="4. Payments">
         <p>
           Paid plans, subscriptions, and credit top-ups are listed on the pricing page in USD.
-          Checkout, receipts, taxes, and payment support are handled by our payment provider (a
-          merchant of record) once checkout is enabled. The provider&apos;s name may appear on your
-          payment statement.
+          Paddle will process checkout, receipts, taxes, and payment support after checkout is
+          enabled for the site. Paddle may appear on your payment statement.
         </p>
         <p>
           Subscription plans renew monthly unless cancelled. Monthly plan credits reset each
