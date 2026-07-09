@@ -43,14 +43,6 @@ function stringAt(value: unknown, paths: string[][]): string | null {
   return null;
 }
 
-function recordAt(value: unknown, paths: string[][]): UnknownRecord | null {
-  for (const path of paths) {
-    const v = readPath(value, path);
-    if (isRecord(v)) return v;
-  }
-  return null;
-}
-
 function collectProductIds(value: unknown, out = new Set<string>()): Set<string> {
   if (Array.isArray(value)) {
     for (const item of value) collectProductIds(item, out);
@@ -108,16 +100,29 @@ function eventType(event: unknown): string {
   );
 }
 
-function extractMetadata(event: unknown): UnknownRecord {
-  const metadataSources = [
-    recordAt(event, [["metadata"]]),
-    recordAt(event, [["data", "metadata"]]),
-    recordAt(event, [["data", "object", "metadata"]]),
-    recordAt(event, [["data", "payment", "metadata"]]),
-    recordAt(event, [["data", "subscription", "metadata"]]),
-  ];
+function collectMetadata(value: unknown, out: UnknownRecord[] = []): UnknownRecord[] {
+  if (Array.isArray(value)) {
+    for (const item of value) collectMetadata(item, out);
+    return out;
+  }
 
-  return Object.assign({}, ...metadataSources.filter(Boolean));
+  if (!isRecord(value)) return out;
+
+  const metadata = value.metadata;
+  if (isRecord(metadata)) out.push(metadata);
+
+  for (const item of Object.values(value)) {
+    if (isRecord(item) || Array.isArray(item)) collectMetadata(item, out);
+  }
+
+  return out;
+}
+
+function extractMetadata(event: unknown): UnknownRecord {
+  // Dodo webhook payload shapes can differ by event type. Search recursively for
+  // metadata so checkout-session metadata still works when nested under payment,
+  // subscription, payload, object, or line-item containers.
+  return Object.assign({}, ...collectMetadata(event));
 }
 
 function extractAccountKey(event: unknown): string | null {
@@ -178,10 +183,16 @@ export async function POST(req: NextRequest) {
   const key = extractCustomerKey(event);
   const productIds = extractProductIds(event);
   const grants = productGrants();
+  const matchedProductIds = productIds.filter((productId) => grants[productId]);
 
   if (!key) {
     console.warn(`dodo webhook ${type}: no account metadata or customer email in payload`);
-    return NextResponse.json({ received: true, ignored: "missing_customer_key" });
+    await store.clearOnce(onceKey).catch(() => undefined);
+    return NextResponse.json({ error: "Webhook payload missing customer key" }, { status: 422 });
+  }
+
+  if (matchedProductIds.length === 0) {
+    console.warn(`dodo webhook ${type}: no matching configured product id`, { productIds });
   }
 
   try {

@@ -1,12 +1,11 @@
 import type { Metadata } from "next";
-import type { ReactNode } from "react";
 import Link from "next/link";
 import { PageShell, PolicySection } from "@/app/components/SiteChrome";
 
 export const metadata: Metadata = {
   title: "Pricing | Dragon Pixel Store Analyzer",
   description:
-    "Pricing for Dragon Pixel Store Analyzer analysis reports, generation credits, and AI store asset fixes.",
+    "Pricing for Dragon Pixel Store Analyzer analysis reports, generation credits, and store asset variants.",
 };
 
 const plans = [
@@ -17,10 +16,10 @@ const plans = [
     note: "For testing the full loop.",
     bullets: [
       "3 analysis reports per day",
-      "Score, priority fixes, and revision brief on every report",
+      "Score, priority fixes, and Dragon Pixel edit plan on every report",
       "3 generation credits, one-time",
       "Preview-size generated exports",
-          ],
+    ],
     href: "/",
     cta: "Analyze your assets free",
     microcopy: "No card required.",
@@ -34,8 +33,8 @@ const plans = [
     bullets: [
       "50 generation credits per month",
       "100 analysis reports per month",
-            "Icon, screenshot, feature graphic, and capsule generation",
-            "Credit cost shown before every generation",
+      "Icon, screenshot, feature graphic, and capsule generation",
+      "Credit cost shown before every generation",
       "Failed generations never use credits",
     ],
     product: "indie",
@@ -52,18 +51,12 @@ const plans = [
       "200 generation credits per month",
       "500 analysis reports per month",
       "Everything in Indie",
-                            ],
+    ],
     product: "pro",
     cta: "Go Pro",
     microcopy: "Cancel anytime. Monthly credits reset each billing cycle.",
     featured: false,
   },
-];
-
-const topUps = [
-  { credits: "25 credits", price: "$12", product: "topup_25" },
-  { credits: "100 credits", price: "$39", product: "topup_100" },
-  { credits: "250 credits", price: "$79", product: "topup_250" },
 ];
 
 const oneTimeFix = {
@@ -77,32 +70,33 @@ const oneTimeFix = {
   cta: "Buy Quick Fix",
 };
 
-function CheckoutButton({
+function checkoutHref(product: string) {
+  return `/api/checkout?product=${encodeURIComponent(product)}`;
+}
+
+function CheckoutLink({
   product,
   children,
   featured = false,
   className = "",
 }: {
   product: string;
-  children: ReactNode;
+  children: React.ReactNode;
   featured?: boolean;
   className?: string;
 }) {
   return (
-    <form action="/api/checkout" method="post" className={className}>
-      <input type="hidden" name="product" value={product} />
-      <button
-        type="submit"
-        className="font-brand inline-flex min-h-[46px] w-full items-center justify-center rounded-xl text-[13px] font-semibold transition hover:-translate-y-0.5 hover:brightness-110"
-        style={
-          featured
-            ? { background: "linear-gradient(120deg,var(--gold),#ff8a3d)", color: "#1a1205" }
-            : { background: "linear-gradient(120deg,var(--cyan),var(--magenta))", color: "#05121a" }
-        }
-      >
-        {children}
-      </button>
-    </form>
+    <a
+      href={checkoutHref(product)}
+      className={`font-brand inline-flex min-h-[46px] w-full items-center justify-center rounded-xl text-[13px] font-semibold transition hover:-translate-y-0.5 hover:brightness-110 ${className}`}
+      style={
+        featured
+          ? { background: "linear-gradient(120deg,var(--gold),#ff8a3d)", color: "#1a1205" }
+          : { background: "linear-gradient(120deg,var(--cyan),var(--magenta))", color: "#05121a" }
+      }
+    >
+      {children}
+    </a>
   );
 }
 
@@ -111,7 +105,7 @@ export default function PricingPage() {
     <PageShell
       eyebrow="Pricing"
       title="Simple pricing for reports, credits, and generated variants."
-      intro="Analysis reports are metered by plan. Credits are only used when the AI generates an improved asset for you. One credit equals one generated variant."
+      intro="Analysis reports are metered by plan. Credits are only used when a finished improved asset variant is delivered. One credit equals one delivered variant."
     >
       <div className="mb-7 rounded-2xl border border-[rgba(105,255,0,.28)] bg-[rgba(105,255,0,.055)] p-5">
         <p className="text-[14.5px] font-semibold leading-7 text-[var(--text-2)]">
@@ -177,13 +171,9 @@ export default function PricingPage() {
             )}
 
             {typeof plan.product === "string" ? (
-              <CheckoutButton
-                product={plan.product}
-                featured={plan.featured}
-                className="mt-6"
-              >
+              <CheckoutLink product={plan.product} featured={plan.featured} className="mt-6">
                 {plan.cta}
-              </CheckoutButton>
+              </CheckoutLink>
             ) : (
               <Link
                 href={plan.href}
@@ -226,39 +216,13 @@ export default function PricingPage() {
             higher per credit than Indie or Pro, so monthly plans remain the better choice for
             a full store-page polish.
           </p>
-          <CheckoutButton product={oneTimeFix.product} className="mt-5 sm:max-w-[220px]">
+          <CheckoutLink product={oneTimeFix.product} className="mt-5 sm:max-w-[220px]">
             {oneTimeFix.cta}
-          </CheckoutButton>
+          </CheckoutLink>
           <p className="mt-2 text-[12px] font-medium text-[var(--text-4)]">
             After payment, credits are applied automatically to this browser through the checkout session.
           </p>
         </div>
-      </PolicySection>
-
-      <PolicySection title="Generation credit top-ups">
-        <p>
-          Ran out mid-launch? Top up without changing plans. Top-ups are available on Indie
-          and Pro plans.
-        </p>
-        <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-          {topUps.map((item) => (
-            <div key={item.credits} className="rounded-xl border border-[var(--edge)] bg-[#0d1423] p-4">
-              <div className="font-brand text-[15px] font-semibold text-[var(--foreground)]">
-                {item.credits}
-              </div>
-              <div className="font-score mt-2 text-[28px] font-black text-[var(--cyan)]">
-                {item.price}
-              </div>
-              <CheckoutButton product={item.product} className="mt-4">
-                Buy top-up
-              </CheckoutButton>
-            </div>
-          ))}
-        </div>
-        <p>
-          Purchased credits do not expire while your account remains active. Monthly plans stay
-          the better per-credit value.
-        </p>
       </PolicySection>
 
       <PolicySection title="Mini FAQ">

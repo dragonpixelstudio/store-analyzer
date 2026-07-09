@@ -20,7 +20,7 @@ const PRODUCTS: Record<ProductKey, ProductConfig> = {
   topup_250: { env: "DODO_PRODUCT_TOPUP_250", label: "250 Credit Top-up" },
 };
 
-function isProductKey(value: FormDataEntryValue | null): value is ProductKey {
+function isProductKey(value: unknown): value is ProductKey {
   return (
     value === "indie" ||
     value === "pro" ||
@@ -42,8 +42,8 @@ function apiBase() {
 }
 
 function requestOrigin(req: NextRequest) {
-  // Use the current deployed origin; do not trust a user-supplied redirect URL.
-  return req.nextUrl.origin;
+  // Prefer a fixed production origin when configured. Otherwise use the current request origin.
+  return (process.env.NEXT_PUBLIC_APP_URL || process.env.APP_URL || req.nextUrl.origin).replace(/\/$/, "");
 }
 
 function existingAccountKey(req: NextRequest) {
@@ -62,61 +62,58 @@ async function createDodoCheckout(productId: string, productKey: ProductKey, acc
     throw new Error("DODO_PAYMENTS_API_KEY is missing");
   }
 
+  const body = {
+    product_cart: [{ product_id: productId, quantity: 1 }],
+    return_url: `${origin}/checkout/success?product=${encodeURIComponent(productKey)}`,
+    cancel_url: `${origin}/checkout/cancelled`,
+    metadata: {
+      dpx_account_key: accountKey,
+      dpx_product_key: productKey,
+      dpx_source: "pricing_page",
+    },
+  };
+
   const res = await fetch(`${apiBase()}/checkouts`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
       Authorization: `Bearer ${apiKey}`,
     },
-    body: JSON.stringify({
-      product_cart: [{ product_id: productId, quantity: 1 }],
-      return_url: `${origin}/checkout/success?product=${encodeURIComponent(productKey)}`,
-      cancel_url: `${origin}/checkout/cancelled`,
-      metadata: {
-        dpx_account_key: accountKey,
-        dpx_product_key: productKey,
-        dpx_source: "pricing_page",
-      },
-    }),
+    body: JSON.stringify(body),
   });
 
-  const data = (await res.json().catch(() => null)) as { checkout_url?: string; error?: unknown } | null;
+  const data = (await res.json().catch(() => null)) as { checkout_url?: string; error?: unknown; message?: unknown } | null;
   if (!res.ok || !data?.checkout_url) {
-    console.error("Dodo checkout creation failed", { status: res.status, data });
+    console.error("Dodo checkout creation failed", { status: res.status, data, body });
     throw new Error("Dodo checkout creation failed");
   }
 
   return data.checkout_url;
 }
 
-export async function POST(req: NextRequest) {
-  let form: FormData;
-  try {
-    form = await req.formData();
-  } catch {
-    return NextResponse.json({ error: "Invalid checkout request" }, { status: 400 });
-  }
-
-  const productKey = form.get("product");
-  if (!isProductKey(productKey)) {
+async function startCheckout(req: NextRequest, rawProduct: unknown) {
+  if (!isProductKey(rawProduct)) {
     return NextResponse.json({ error: "Invalid product" }, { status: 400 });
   }
 
-  const config = PRODUCTS[productKey];
+  const config = PRODUCTS[rawProduct];
   const productId = process.env[config.env];
   if (!productId) {
     console.error(`Missing ${config.env} for ${config.label} checkout`);
-    return NextResponse.json({ error: "Checkout is not configured for this product" }, { status: 500 });
+    return NextResponse.json(
+      { error: `Checkout is not configured for ${config.label}. Missing ${config.env}.` },
+      { status: 500 }
+    );
   }
 
   const accountKey = existingAccountKey(req) ?? createAccountKey();
 
   let checkoutUrl: string;
   try {
-    checkoutUrl = await createDodoCheckout(productId, productKey, accountKey, requestOrigin(req));
+    checkoutUrl = await createDodoCheckout(productId, rawProduct, accountKey, requestOrigin(req));
   } catch (err) {
     console.error("Checkout start failed", err instanceof Error ? err.message : err);
-    return NextResponse.json({ error: "Could not start checkout. Please try again." }, { status: 502 });
+    return NextResponse.json({ error: "Could not start Dodo checkout. Check Vercel logs." }, { status: 502 });
   }
 
   const response = NextResponse.redirect(checkoutUrl, { status: 303 });
@@ -129,4 +126,19 @@ export async function POST(req: NextRequest) {
   });
 
   return response;
+}
+
+export async function GET(req: NextRequest) {
+  return startCheckout(req, req.nextUrl.searchParams.get("product"));
+}
+
+export async function POST(req: NextRequest) {
+  let form: FormData;
+  try {
+    form = await req.formData();
+  } catch {
+    return NextResponse.json({ error: "Invalid checkout request" }, { status: 400 });
+  }
+
+  return startCheckout(req, form.get("product"));
 }
