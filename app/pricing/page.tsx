@@ -1,6 +1,13 @@
 import type { Metadata } from "next";
 import Link from "next/link";
 import { PageShell, PolicySection } from "@/app/components/SiteChrome";
+import ClaimPurchase from "@/app/components/ClaimPurchase";
+
+const CHECKOUT = {
+  indie: process.env.NEXT_PUBLIC_DODO_CHECKOUT_INDIE || "/contact",
+  pro: process.env.NEXT_PUBLIC_DODO_CHECKOUT_PRO || "/contact",
+  quickFix: process.env.NEXT_PUBLIC_DODO_CHECKOUT_QUICKFIX || "/contact",
+};
 
 export const metadata: Metadata = {
   title: "Pricing | Dragon Pixel Store Analyzer",
@@ -36,7 +43,7 @@ const plans = [
             "Credit cost shown before every generation",
       "Failed generations never use credits",
     ],
-    href: "/contact",
+    href: CHECKOUT.indie,
     cta: "Start polishing your page",
     microcopy: "Cancel anytime. Monthly credits reset each billing cycle.",
     featured: true,
@@ -51,7 +58,7 @@ const plans = [
       "500 analysis reports per month",
       "Everything in Indie",
                             ],
-    href: "/contact",
+    href: CHECKOUT.pro,
     cta: "Go Pro",
     microcopy: "Cancel anytime. Monthly credits reset each billing cycle.",
   },
@@ -70,6 +77,8 @@ const oneTimeFix = {
   credits: "6 generation credits",
   detail:
     "Best when you only need one icon, screenshot, capsule, or feature graphic improved and do not want a monthly plan.",
+  href: CHECKOUT.quickFix,
+  cta: "Buy Quick Fix",
 };
 
 export default function PricingPage() {
@@ -186,6 +195,15 @@ export default function PricingPage() {
             higher per credit than Indie or Pro, so monthly plans remain the better choice for
             a full store-page polish.
           </p>
+          <Link
+  href={oneTimeFix.href}
+  className="font-brand mt-5 inline-flex min-h-[46px] w-full items-center justify-center rounded-xl bg-[var(--cyan)] px-5 text-[13px] font-semibold text-[#05121a] transition hover:-translate-y-0.5 hover:brightness-110 sm:w-auto"
+>
+  {oneTimeFix.cta}
+</Link>
+<p className="mt-2 text-[12px] font-medium text-[var(--text-4)]">
+  One-time purchase. No subscription required. Use the checkout email below after payment to activate the 6 credits in this browser.
+</p>
         </div>
       </PolicySection>
 
@@ -237,6 +255,7 @@ export default function PricingPage() {
           period. Payments, receipts, and taxes are handled by our merchant of record.
         </p>
       </PolicySection>
+      <ClaimPurchase />
     </PageShell>
   );
 }

@@ -1717,7 +1717,7 @@ export default function Home() {
 
             <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
               <span className="text-[12px] font-semibold text-[var(--faint)]">
-                Secure checkout is coming online shortly. Every plan is self-serve
+                Secure checkout is handled by Dodo Payments. Every plan is self-serve
                 software: analysis reports are included with your plan, and credits
                 are only spent when an improved image is delivered to you.
               </span>
