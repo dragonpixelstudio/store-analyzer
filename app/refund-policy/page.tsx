@@ -52,7 +52,7 @@ export default function RefundPolicyPage() {
 
       <PolicySection title="5. Payment processing">
         <p>
-          Once checkout is enabled, our payment provider may process approved refunds back to the original
+          Our payment provider may process approved refunds back to the original
           payment method. Bank, card, and local payment-method timelines may vary.
         </p>
       </PolicySection>

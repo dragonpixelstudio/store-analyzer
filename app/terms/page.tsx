@@ -55,7 +55,7 @@ export default function TermsPage() {
         <p>
           Paid plans, subscriptions, and credit top-ups are listed on the pricing page in USD.
           Checkout, receipts, taxes, and payment support are handled by our payment provider (a
-          merchant of record) once checkout is enabled. The provider&apos;s name may appear on your
+          merchant of record). The provider&apos;s name may appear on your
           payment statement.
         </p>
         <p>

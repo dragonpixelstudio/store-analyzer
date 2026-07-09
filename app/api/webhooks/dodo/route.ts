@@ -4,12 +4,8 @@ import { emailKey, getCreditStore, type AccountPlan } from "@/lib/credits";
 
 export const runtime = "nodejs";
 
-// ---------------------------------------------------------------------------
-// Product mapping. Set these env vars to the product IDs from the Dodo
-// dashboard (Products page). Subscriptions grant a plan + monthly credits;
-// one-time products grant credits only.
-// ---------------------------------------------------------------------------
 type Grant = { plan?: AccountPlan; credits: number };
+type UnknownRecord = Record<string, unknown>;
 
 function productGrants(): Record<string, Grant> {
   const map: Record<string, Grant> = {};
@@ -26,12 +22,54 @@ function productGrants(): Record<string, Grant> {
   return map;
 }
 
-// ---------------------------------------------------------------------------
-// Standard Webhooks signature verification (Dodo follows this spec).
-// Signed content: `${webhook-id}.${webhook-timestamp}.${rawBody}`
-// Secret: `whsec_` + base64 key. Header may hold several space-separated
-// `v1,<base64sig>` entries; any match passes.
-// ---------------------------------------------------------------------------
+function isRecord(value: unknown): value is UnknownRecord {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function readPath(value: unknown, path: string[]): unknown {
+  let cur = value;
+  for (const key of path) {
+    if (!isRecord(cur)) return undefined;
+    cur = cur[key];
+  }
+  return cur;
+}
+
+function stringAt(value: unknown, paths: string[][]): string | null {
+  for (const path of paths) {
+    const v = readPath(value, path);
+    if (typeof v === "string" && v.trim()) return v.trim();
+  }
+  return null;
+}
+
+function recordAt(value: unknown, paths: string[][]): UnknownRecord | null {
+  for (const path of paths) {
+    const v = readPath(value, path);
+    if (isRecord(v)) return v;
+  }
+  return null;
+}
+
+function collectProductIds(value: unknown, out = new Set<string>()): Set<string> {
+  if (Array.isArray(value)) {
+    for (const item of value) collectProductIds(item, out);
+    return out;
+  }
+  if (!isRecord(value)) return out;
+
+  for (const [key, item] of Object.entries(value)) {
+    if (key === "product_id" && typeof item === "string" && item.trim()) {
+      out.add(item.trim());
+      continue;
+    }
+    if (key === "product_cart" || key === "items" || key === "line_items" || isRecord(item) || Array.isArray(item)) {
+      collectProductIds(item, out);
+    }
+  }
+  return out;
+}
+
 function verifySignature(rawBody: string, req: NextRequest): boolean {
   const secretRaw = process.env.DODO_PAYMENTS_WEBHOOK_SECRET;
   if (!secretRaw) return false;
@@ -41,7 +79,6 @@ function verifySignature(rawBody: string, req: NextRequest): boolean {
   const signatureHeader = req.headers.get("webhook-signature");
   if (!id || !timestamp || !signatureHeader) return false;
 
-  // Reject stale deliveries (replay protection, 5 minutes).
   const ts = Number(timestamp);
   if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > 300) return false;
 
@@ -65,32 +102,54 @@ function verifySignature(rawBody: string, req: NextRequest): boolean {
   return false;
 }
 
-// ---------------------------------------------------------------------------
-// Payload helpers: Dodo event bodies vary by type; read defensively.
-// ---------------------------------------------------------------------------
-type DodoEvent = {
-  type?: string;
-  data?: {
-    payload_type?: string;
-    product_id?: string;
-    product_cart?: Array<{ product_id?: string; quantity?: number }>;
-    customer?: { email?: string; customer_id?: string };
-    metadata?: Record<string, string>;
-  };
-};
-
-function extractEmail(event: DodoEvent): string | null {
-  const email = event.data?.customer?.email;
-  return typeof email === "string" && email.includes("@") ? email : null;
+function eventType(event: unknown): string {
+  return (
+    stringAt(event, [["type"], ["event_type"], ["payload_type"], ["data", "payload_type"]]) ?? ""
+  );
 }
 
-function extractProductIds(event: DodoEvent): string[] {
-  const ids: string[] = [];
-  if (typeof event.data?.product_id === "string") ids.push(event.data.product_id);
-  for (const item of event.data?.product_cart ?? []) {
-    if (typeof item?.product_id === "string") ids.push(item.product_id);
+function extractMetadata(event: unknown): UnknownRecord {
+  const metadataSources = [
+    recordAt(event, [["metadata"]]),
+    recordAt(event, [["data", "metadata"]]),
+    recordAt(event, [["data", "object", "metadata"]]),
+    recordAt(event, [["data", "payment", "metadata"]]),
+    recordAt(event, [["data", "subscription", "metadata"]]),
+  ];
+
+  return Object.assign({}, ...metadataSources.filter(Boolean));
+}
+
+function extractAccountKey(event: unknown): string | null {
+  const metadata = extractMetadata(event);
+  const key = metadata.dpx_account_key;
+  if (typeof key === "string" && /^(acct|em):[A-Za-z0-9:_-]+$/.test(key)) {
+    return key;
   }
-  return ids;
+  return null;
+}
+
+function extractEmail(event: unknown): string | null {
+  const email = stringAt(event, [
+    ["data", "customer", "email"],
+    ["data", "object", "customer", "email"],
+    ["data", "customer_email"],
+    ["data", "object", "customer_email"],
+    ["data", "email"],
+    ["data", "object", "email"],
+    ["data", "payment", "customer", "email"],
+    ["data", "subscription", "customer", "email"],
+  ]);
+
+  return email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
+}
+
+function extractCustomerKey(event: unknown): string | null {
+  return extractAccountKey(event) ?? (extractEmail(event) ? emailKey(extractEmail(event)!) : null);
+}
+
+function extractProductIds(event: unknown): string[] {
+  return [...collectProductIds(event)];
 }
 
 export async function POST(req: NextRequest) {
@@ -100,40 +159,36 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
   }
 
-  let event: DodoEvent;
+  let event: unknown;
   try {
-    event = JSON.parse(rawBody) as DodoEvent;
+    event = JSON.parse(rawBody) as unknown;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
   const store = getCreditStore();
-
-  // Idempotency: Dodo delivers at-least-once; process each webhook-id once.
-  const webhookId = req.headers.get("webhook-id") ?? "";
-  const firstTime = await store.markOnce(`wh:${webhookId}`, 60 * 60 * 24 * 3);
+  const webhookId = req.headers.get("webhook-id") || stringAt(event, [["id"], ["event_id"]]) || rawBody.slice(0, 64);
+  const onceKey = `wh:${webhookId}`;
+  const firstTime = await store.markOnce(onceKey, 60 * 60 * 24 * 30);
   if (!firstTime) {
     return NextResponse.json({ received: true, duplicate: true });
   }
 
-  const type = event.type ?? "";
-  const email = extractEmail(event);
+  const type = eventType(event);
+  const key = extractCustomerKey(event);
+  const productIds = extractProductIds(event);
   const grants = productGrants();
 
-  if (!email) {
-    // Nothing to key the account on; acknowledge so Dodo stops retrying.
-    console.warn(`dodo webhook ${type}: no customer email in payload`);
-    return NextResponse.json({ received: true });
+  if (!key) {
+    console.warn(`dodo webhook ${type}: no account metadata or customer email in payload`);
+    return NextResponse.json({ received: true, ignored: "missing_customer_key" });
   }
-
-  const key = emailKey(email);
 
   try {
     switch (type) {
-      // Subscription lifecycle: plan + monthly credit grant.
       case "subscription.active":
       case "subscription.renewed": {
-        for (const productId of extractProductIds(event)) {
+        for (const productId of productIds) {
           const grant = grants[productId];
           if (!grant) continue;
           if (grant.plan) await store.setPlan(key, grant.plan);
@@ -143,11 +198,14 @@ export async function POST(req: NextRequest) {
         break;
       }
 
-      // Loss of subscription: back to free. (Simple policy for launch:
-      // access ends on cancellation event. Soften later if needed by keeping
-      // the plan until period end from the payload's expiry field.)
+      // Keep cancelled subscriptions active until Dodo sends an end-state event.
+      // Some providers emit cancellation immediately when the user disables renewal.
       case "subscription.cancelled":
-      case "subscription.canceled":
+      case "subscription.canceled": {
+        console.log(`dodo ${type}: ${key} renewal cancelled; keeping current plan until expiry`);
+        break;
+      }
+
       case "subscription.expired":
       case "subscription.failed":
       case "subscription.revoked": {
@@ -156,11 +214,8 @@ export async function POST(req: NextRequest) {
         break;
       }
 
-      // One-time purchases (Quick Fix, top-ups). Subscription invoices also
-      // emit payment.succeeded, so only credit products that are NOT plans -
-      // plan products are credited by the subscription events above.
       case "payment.succeeded": {
-        for (const productId of extractProductIds(event)) {
+        for (const productId of productIds) {
           const grant = grants[productId];
           if (!grant || grant.plan) continue;
           await store.addCredits(key, grant.credits);
@@ -169,12 +224,11 @@ export async function POST(req: NextRequest) {
         break;
       }
 
-      // Refund: pull the credits back for one-time products.
       case "refund.succeeded": {
-        for (const productId of extractProductIds(event)) {
+        for (const productId of productIds) {
           const grant = grants[productId];
           if (!grant || grant.plan) continue;
-          await store.reserve(key, grant.credits); // best-effort clawback
+          await store.reserve(key, grant.credits);
           console.log(`dodo refund.succeeded: ${key} -${grant.credits} credits`);
         }
         break;
@@ -184,9 +238,9 @@ export async function POST(req: NextRequest) {
         console.log(`dodo webhook unhandled type: ${type}`);
     }
   } catch (err: unknown) {
+    await store.clearOnce(onceKey).catch(() => undefined);
     console.error("dodo webhook processing error:", err instanceof Error ? err.message : err);
-    // Still 200: signature was valid and the id is marked; retries would be
-    // no-ops. Errors here are visible in logs for manual reconciliation.
+    return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
   }
 
   return NextResponse.json({ received: true });

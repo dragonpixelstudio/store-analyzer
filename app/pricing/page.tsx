@@ -1,13 +1,7 @@
 import type { Metadata } from "next";
+import type { ReactNode } from "react";
 import Link from "next/link";
 import { PageShell, PolicySection } from "@/app/components/SiteChrome";
-import ClaimPurchase from "@/app/components/ClaimPurchase";
-
-const CHECKOUT = {
-  indie: process.env.NEXT_PUBLIC_DODO_CHECKOUT_INDIE || "/contact",
-  pro: process.env.NEXT_PUBLIC_DODO_CHECKOUT_PRO || "/contact",
-  quickFix: process.env.NEXT_PUBLIC_DODO_CHECKOUT_QUICKFIX || "/contact",
-};
 
 export const metadata: Metadata = {
   title: "Pricing | Dragon Pixel Store Analyzer",
@@ -30,6 +24,7 @@ const plans = [
     href: "/",
     cta: "Analyze your assets free",
     microcopy: "No card required.",
+    featured: false,
   },
   {
     name: "Indie",
@@ -43,7 +38,7 @@ const plans = [
             "Credit cost shown before every generation",
       "Failed generations never use credits",
     ],
-    href: CHECKOUT.indie,
+    product: "indie",
     cta: "Start polishing your page",
     microcopy: "Cancel anytime. Monthly credits reset each billing cycle.",
     featured: true,
@@ -58,16 +53,17 @@ const plans = [
       "500 analysis reports per month",
       "Everything in Indie",
                             ],
-    href: CHECKOUT.pro,
+    product: "pro",
     cta: "Go Pro",
     microcopy: "Cancel anytime. Monthly credits reset each billing cycle.",
+    featured: false,
   },
 ];
 
 const topUps = [
-  { credits: "25 credits", price: "$12" },
-  { credits: "100 credits", price: "$39" },
-  { credits: "250 credits", price: "$79" },
+  { credits: "25 credits", price: "$12", product: "topup_25" },
+  { credits: "100 credits", price: "$39", product: "topup_100" },
+  { credits: "250 credits", price: "$79", product: "topup_250" },
 ];
 
 const oneTimeFix = {
@@ -77,9 +73,38 @@ const oneTimeFix = {
   credits: "6 generation credits",
   detail:
     "Best when you only need one icon, screenshot, capsule, or feature graphic improved and do not want a monthly plan.",
-  href: CHECKOUT.quickFix,
+  product: "quickfix",
   cta: "Buy Quick Fix",
 };
+
+function CheckoutButton({
+  product,
+  children,
+  featured = false,
+  className = "",
+}: {
+  product: string;
+  children: ReactNode;
+  featured?: boolean;
+  className?: string;
+}) {
+  return (
+    <form action="/api/checkout" method="post" className={className}>
+      <input type="hidden" name="product" value={product} />
+      <button
+        type="submit"
+        className="font-brand inline-flex min-h-[46px] w-full items-center justify-center rounded-xl text-[13px] font-semibold transition hover:-translate-y-0.5 hover:brightness-110"
+        style={
+          featured
+            ? { background: "linear-gradient(120deg,var(--gold),#ff8a3d)", color: "#1a1205" }
+            : { background: "linear-gradient(120deg,var(--cyan),var(--magenta))", color: "#05121a" }
+        }
+      >
+        {children}
+      </button>
+    </form>
+  );
+}
 
 export default function PricingPage() {
   return (
@@ -151,17 +176,23 @@ export default function PricingPage() {
               </p>
             )}
 
-            <Link
-              href={plan.href}
-              className="font-brand mt-6 inline-flex min-h-[46px] items-center justify-center rounded-xl text-[13px] font-semibold transition hover:-translate-y-0.5 hover:brightness-110"
-              style={
-                plan.featured
-                  ? { background: "linear-gradient(120deg,var(--gold),#ff8a3d)", color: "#1a1205" }
-                  : { background: "linear-gradient(120deg,var(--cyan),var(--magenta))", color: "#05121a" }
-              }
-            >
-              {plan.cta}
-            </Link>
+            {typeof plan.product === "string" ? (
+              <CheckoutButton
+                product={plan.product}
+                featured={plan.featured}
+                className="mt-6"
+              >
+                {plan.cta}
+              </CheckoutButton>
+            ) : (
+              <Link
+                href={plan.href}
+                className="font-brand mt-6 inline-flex min-h-[46px] items-center justify-center rounded-xl text-[13px] font-semibold transition hover:-translate-y-0.5 hover:brightness-110"
+                style={{ background: "linear-gradient(120deg,var(--cyan),var(--magenta))", color: "#05121a" }}
+              >
+                {plan.cta}
+              </Link>
+            )}
             <p className="mt-2 text-center text-[12px] font-medium text-[var(--text-4)]">
               {plan.microcopy}
             </p>
@@ -195,15 +226,12 @@ export default function PricingPage() {
             higher per credit than Indie or Pro, so monthly plans remain the better choice for
             a full store-page polish.
           </p>
-          <Link
-  href={oneTimeFix.href}
-  className="font-brand mt-5 inline-flex min-h-[46px] w-full items-center justify-center rounded-xl bg-[var(--cyan)] px-5 text-[13px] font-semibold text-[#05121a] transition hover:-translate-y-0.5 hover:brightness-110 sm:w-auto"
->
-  {oneTimeFix.cta}
-</Link>
-<p className="mt-2 text-[12px] font-medium text-[var(--text-4)]">
-  One-time purchase. No subscription required. Use the checkout email below after payment to activate the 6 credits in this browser.
-</p>
+          <CheckoutButton product={oneTimeFix.product} className="mt-5 sm:max-w-[220px]">
+            {oneTimeFix.cta}
+          </CheckoutButton>
+          <p className="mt-2 text-[12px] font-medium text-[var(--text-4)]">
+            After payment, credits are applied automatically to this browser through the checkout session.
+          </p>
         </div>
       </PolicySection>
 
@@ -221,6 +249,9 @@ export default function PricingPage() {
               <div className="font-score mt-2 text-[28px] font-black text-[var(--cyan)]">
                 {item.price}
               </div>
+              <CheckoutButton product={item.product} className="mt-4">
+                Buy top-up
+              </CheckoutButton>
             </div>
           ))}
         </div>
@@ -255,7 +286,6 @@ export default function PricingPage() {
           period. Payments, receipts, and taxes are handled by our merchant of record.
         </p>
       </PolicySection>
-      <ClaimPurchase />
     </PageShell>
   );
 }

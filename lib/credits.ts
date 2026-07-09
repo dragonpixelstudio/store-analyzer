@@ -13,6 +13,7 @@ export interface CreditStore {
   setPlan(key: string, plan: AccountPlan): Promise<void>;
   /** Atomic once-only marker (webhook idempotency). True if first time. */
   markOnce(id: string, ttlSeconds: number): Promise<boolean>;
+  clearOnce(id: string): Promise<void>;
   reserveReport(
     key: string,
     limit: number,
@@ -66,6 +67,10 @@ class MemoryCreditStore implements CreditStore {
     if (this.seen.has(id)) return false;
     this.seen.add(id);
     return true;
+  }
+
+  async clearOnce(id: string) {
+    this.seen.delete(id);
   }
 
   async reserveReport(key: string, limit: number, periodKey: string) {
@@ -132,6 +137,10 @@ class RedisCreditStore implements CreditStore {
   async markOnce(id: string, ttlSeconds: number) {
     const r = await this.redis.set(`dpx:once:${id}`, 1, { nx: true, ex: ttlSeconds });
     return r === "OK";
+  }
+
+  async clearOnce(id: string) {
+    await this.redis.del(`dpx:once:${id}`);
   }
 
   async reserveReport(key: string, limit: number, periodKey: string) {

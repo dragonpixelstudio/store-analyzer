@@ -1699,16 +1699,26 @@ export async function POST(req: Request) {
       );
     }
 
-    const reportMeter = await getCreditStore().reserveReport(
-      callerKey(req),
-      3,
-      `free:${dailyReportPeriod()}`
-    );
+    const accountKey = callerKey(req);
+    const store = getCreditStore();
+    const plan = await store.getPlan(accountKey);
+    const reportLimit = plan === "pro" ? 500 : plan === "indie" ? 100 : 3;
+    const reportPeriod =
+      plan === "free"
+        ? `free:${dailyReportPeriod()}`
+        : `${plan}:${new Date().toISOString().slice(0, 7)}`;
+
+    const reportMeter = await store.reserveReport(accountKey, reportLimit, reportPeriod);
     if (!reportMeter.success) {
+      const limitText =
+        plan === "pro"
+          ? "500 Pro analysis reports this month"
+          : plan === "indie"
+            ? "100 Indie analysis reports this month"
+            : "today's 3 free analysis reports";
       return jsonResponse(
         {
-          error:
-            "You've used today's 3 free analysis reports. Upgrade when checkout is enabled or try again tomorrow.",
+          error: `You've used ${limitText}. Upgrade, top up your plan, or try again when the meter resets.`,
         },
         { status: 429 }
       );

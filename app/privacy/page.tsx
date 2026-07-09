@@ -24,7 +24,7 @@ export default function PrivacyPage() {
           <li>Analysis outputs, scores, review text, and technical request metadata.</li>
           <li>IP address and basic request data used for security, abuse prevention, and rate limits.</li>
           <li>Email address, order details, account information, and support messages if you contact us or buy a paid plan.</li>
-          <li>Payment and receipt information handled by our payment provider after checkout is enabled.</li>
+          <li>Payment and receipt information handled by our payment provider.</li>
         </ul>
       </PolicySection>
 
@@ -65,7 +65,7 @@ export default function PrivacyPage() {
         <p>
           Dragon Pixel Studio does not ask you to enter card details directly on this website.
           Our payment provider (a merchant of record) will handle payment details, tax calculation,
-          receipts, and payment support after checkout is enabled. The provider&apos;s own privacy
+          receipts, and payment support. The provider&apos;s own privacy
           terms apply to payment processing.
         </p>
       </PolicySection>
