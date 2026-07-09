@@ -1015,6 +1015,17 @@ export default function Home() {
   // the 32px shelf test is an icon concept; only show it when an icon was uploaded
   const previewAsset = assets.find((a) => a.role === "icon" && !a.error) || null;
   const editPlanText = editPlanToText(editPlan) || revisionBrief;
+  // The generator applies the SAME top-3 actions the user just read, in
+  // priority order, so the output visibly matches the review. The structured
+  // edit plan follows as reinforcement detail.
+  const generatorBrief = [
+    ...topFixes
+      .slice(0, 3)
+      .map((f, i) => `Priority ${i + 1} - ${f.action}: ${f.change}`),
+    editPlanText,
+  ]
+    .filter(Boolean)
+    .join("\n");
   const impactTone =
     impact?.tone === "good" ? "var(--green)" : impact?.tone === "bad" ? "var(--magenta)" : "var(--gold)";
   const decisionTone =
@@ -1497,7 +1508,7 @@ export default function Home() {
                             : "feature-graphic",
                   }))}
                 platform={assets.some((a) => a.role === "steamCapsule") ? "steam" : "google-play"}
-                revisionBrief={editPlanText}
+                revisionBrief={generatorBrief}
                 assetScore={score}
               />
             </ReportCard>

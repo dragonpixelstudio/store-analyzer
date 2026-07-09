@@ -149,7 +149,7 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
           disabled={busy || !selected || insufficientCredits}
           aria-busy={busy}
           data-busy={busy ? "true" : "false"}
-          className="dpx-generate-button rounded-xl px-6 py-3 text-[14.5px] font-black transition disabled:cursor-not-allowed"
+          className="dpx-generate-button rounded-xl px-7 py-3.5 text-[15.5px] font-black transition disabled:cursor-not-allowed"
         >
           <span className="inline-flex items-center gap-2">
             {busy && <span className="dpx-mini-spinner" aria-hidden="true" />}
@@ -173,7 +173,7 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
       />
 
       <p className="mt-2 text-[12px] font-semibold text-[var(--faint)]">
-        The Dragon Pixel Algorithm wrote this edit plan from your report. The Precision fix applies it with exact algorithmic corrections, guaranteed visible. The Designer pass acts like a senior game artist: if the asset already works it refines, and if the shelf read is weak it recomposes boldly within the same concept. You are only charged for delivered images. Works on your game&apos;s own art; people and faces are out of scope.
+        Both variants apply your top 3 ranked fixes in priority order. The Precision fix makes exact algorithmic corrections, guaranteed visible. The Designer pass acts like a senior game artist: refining if the asset already works, recomposing boldly within the same concept if the shelf read is weak. You are only charged for delivered images. Works on your game&apos;s own art; people and faces are out of scope.
       </p>
 
       {error && (
@@ -183,40 +183,67 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
       )}
 
       {variants.length > 0 && selected && (
-        <div className="mt-4">
-          <div className="grid grid-cols-1 gap-3 sm:grid-cols-3">
-            <figure>
-              {/* eslint-disable-next-line @next/next/no-img-element -- object URL preview, not an optimizable remote asset */}
+        <div className="mt-5">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(180px,260px)_1fr] lg:items-start">
+            {/* Reference original: small, for side-by-side checking */}
+            <figure className="lg:sticky lg:top-4">
+              <div className="mb-1.5 text-[10.5px] font-black uppercase tracking-[.12em] text-[var(--faint)]">
+                Your original
+              </div>
+              {/* eslint-disable-next-line @next/next/no-img-element -- object URL preview */}
               <img
                 src={selected.url}
                 alt="Original asset"
-                className="w-full rounded-lg border border-[var(--edge)]"
+                className="w-full rounded-lg border border-[var(--edge)] opacity-90"
               />
-              <figcaption className="mt-1 text-center text-[11px] font-semibold text-[var(--faint)]">
-                Original
+              <figcaption className="mt-1.5 text-[11px] font-semibold text-[var(--faint)]">
+                Reference. Compare the improved versions against this.
               </figcaption>
             </figure>
-            {variants.map((v, i) => (
-              <figure key={i}>
-                {/* eslint-disable-next-line @next/next/no-img-element -- base64 AI output rendered inline */}
-                <img
-                  src={`data:${v.mimeType};base64,${v.base64}`}
-                  alt={`Improved variant ${i + 1}`}
-                  className="w-full rounded-lg border border-[var(--edge)]"
-                />
-                <figcaption className="mt-1 flex items-center justify-center gap-2 text-[11px] font-semibold text-[var(--faint)]">
-                  {i === 0 ? "Precision fix" : i === 1 ? "Designer pass" : `Variant ${i + 1}`}
-                  <button
-                    type="button"
-                    onClick={() => download(v, i)}
-                    className="inline-flex items-center gap-1 rounded-full border border-[rgba(24,224,255,.34)] bg-[rgba(24,224,255,.08)] px-2.5 py-1 text-[10.5px] font-bold text-[var(--cyan)] transition hover:border-[rgba(24,224,255,.56)] hover:bg-[rgba(24,224,255,.14)]"
+
+            {/* Improved outputs: larger, the focus of the card */}
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              {variants.map((v, i) => {
+                const title = i === 0 ? "Precision fix" : i === 1 ? "Designer pass" : `Variant ${i + 1}`;
+                const blurb =
+                  i === 0
+                    ? "Exact algorithmic corrections, guaranteed visible."
+                    : i === 1
+                      ? "Senior-artist pass on the same concept."
+                      : "Alternative take.";
+                return (
+                  <figure
+                    key={i}
+                    className="group overflow-hidden rounded-xl border border-[var(--edge)] bg-black/30 transition hover:border-[rgba(24,224,255,.42)]"
                   >
-                    <span aria-hidden="true">↓</span>
-                    Download
-                  </button>
-                </figcaption>
-              </figure>
-            ))}
+                    <div className="flex items-center justify-between px-3 pt-2.5">
+                      <span className="text-[12px] font-black uppercase tracking-[.06em] text-[var(--cyan)]">
+                        {title}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => download(v, i)}
+                        className="inline-flex items-center gap-1 rounded-full border border-[rgba(24,224,255,.34)] bg-[rgba(24,224,255,.08)] px-2.5 py-1 text-[10.5px] font-bold text-[var(--cyan)] transition hover:border-[rgba(24,224,255,.56)] hover:bg-[rgba(24,224,255,.14)]"
+                      >
+                        <span aria-hidden="true">↓</span>
+                        Download
+                      </button>
+                    </div>
+                    <div className="mt-2 overflow-hidden">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- base64 AI output rendered inline */}
+                      <img
+                        src={`data:${v.mimeType};base64,${v.base64}`}
+                        alt={`${title} of your asset`}
+                        className="w-full transition-transform duration-300 group-hover:scale-[1.03]"
+                      />
+                    </div>
+                    <figcaption className="px-3 py-2 text-[11.5px] font-semibold text-[var(--faint)]">
+                      {blurb}
+                    </figcaption>
+                  </figure>
+                );
+              })}
+            </div>
           </div>
         </div>
       )}

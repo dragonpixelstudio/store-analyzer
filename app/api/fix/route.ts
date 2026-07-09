@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { callerKey, ensureTrialSeed, getCreditStore } from "@/lib/credits";
+import { callerKey, ensureTrialSeed, getCreditStore, isDeveloperRequest } from "@/lib/credits";
 import { fixAsset, type FixRequest, violatesGuardrails } from "@/lib/gemini";
 import { fixIpRatelimit, fixGlobalRatelimit, getClientIp } from "@/lib/ratelimit";
 import sharp from "sharp";
@@ -163,7 +163,7 @@ export async function POST(req: NextRequest) {
       : null;
   const credits = getCreditStore();
   const key = callerKey(req);
-  await ensureTrialSeed(key);
+  await ensureTrialSeed(key, isDeveloperRequest(req));
 
   const reserved = await credits.reserve(key, requested);
   if (!reserved) {
@@ -285,7 +285,7 @@ export async function GET(req: NextRequest) {
   }
   const credits = getCreditStore();
   const key = callerKey(req);
-  await ensureTrialSeed(key);
+  await ensureTrialSeed(key, isDeveloperRequest(req));
   const remaining = await credits.getBalance(key);
   return NextResponse.json({ credits: { remaining } });
 }

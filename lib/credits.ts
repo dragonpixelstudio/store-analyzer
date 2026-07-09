@@ -204,7 +204,7 @@ export function verifyClaim(cookieValue: string): string | null {
 export { CLAIM_COOKIE };
 
 export function callerKey(req: Request): string {
-  // 1. Claimed purchase identity (signed cookie set by /api/account/claim).
+  // 1. Purchase identity (signed cookie set by the checkout route before redirect).
   const cookieHeader = req.headers.get("cookie") ?? "";
   const match = cookieHeader.match(new RegExp(`${CLAIM_COOKIE}=([^;]+)`));
   if (match) {
@@ -222,8 +222,51 @@ export function callerKey(req: Request): string {
   return `ip:${ip || "local"}`;
 }
 
-export async function ensureTrialSeed(key: string) {
-  await getCreditStore().seedIfNew(key, TRIAL_CREDITS);
+// Anonymous free trial: grant TRIAL_CREDITS at most once per UTC day per
+// identity (claimed account, else IP). This is the durable fix for "credits
+// reset on every deploy" - the daily marker lives in Redis, not memory, and
+// survives redeploys. A paid plan or purchased credits are never affected.
+//
+// Developer bypass: set DEV_UNLIMITED_KEY in the environment to a long random
+// string, then send it as the x-dev-key header (or ?devkey= on GET) during
+// live testing to receive a fresh grant every request without limits.
+export async function ensureTrialSeed(key: string, isDeveloper = false) {
+  const store = getCreditStore();
+  if (isDeveloper) {
+    // Top the developer up to a comfortable testing balance every call.
+    const bal = await store.getBalance(key);
+    if (bal < TRIAL_CREDITS) await store.addCredits(key, TRIAL_CREDITS - bal + 20);
+    return;
+  }
+  // Seed a brand-new identity once, ever.
+  await store.seedIfNew(key, TRIAL_CREDITS);
+
+  // Then, for returning free users, grant the daily allotment at most once per
+  // day - but only if they are not mid-way through spending an existing grant.
+  const day = new Date().toISOString().slice(0, 10);
+  const firstToday = await store.markOnce(`trial:${key}:${day}`, 60 * 60 * 26);
+  if (firstToday) {
+    const plan = await store.getPlan(key);
+    const bal = await store.getBalance(key);
+    // Only refill free users who have run dry; never stack onto a balance.
+    if (plan === "free" && bal <= 0) {
+      await store.addCredits(key, TRIAL_CREDITS);
+    }
+  }
+}
+
+export function isDeveloperRequest(req: Request): boolean {
+  const devKey = process.env.DEV_UNLIMITED_KEY;
+  if (!devKey) return false;
+  const header = req.headers.get("x-dev-key");
+  if (header && header === devKey) return true;
+  try {
+    const url = new URL(req.url);
+    if (url.searchParams.get("devkey") === devKey) return true;
+  } catch {
+    // non-absolute URL in some runtimes; header path already covered
+  }
+  return false;
 }
 
 export function dailyReportPeriod(date = new Date()) {

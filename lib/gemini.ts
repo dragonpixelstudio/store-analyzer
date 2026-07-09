@@ -293,12 +293,15 @@ export async function fixAsset(req: FixRequest, apiKey: string) {
   // a bolder recomposition of the SAME concept. The analyzer score steers this
   // so the model does not over-edit good work or under-edit weak work.
   const score = typeof req.assetScore === "number" ? req.assetScore : null;
+  const antiGeneric = `CRAFT BAR: You are a top-tier game marketing artist, not a filter. Avoid generic AI polish (uniform glow, symmetrical haze, muddy gradients, plastic sheen). Every change must be a deliberate art-direction decision: intentional focal lighting, purposeful negative space, deliberate colour accents, real depth and material. Cheap uniform enhancement is a failed result.`;
+
   const designJudgment =
     score === null
-      ? `DESIGN JUDGMENT: First assess the asset like a senior game marketing artist. If it already works and only needs polish, make surgical refinements. If its shelf read is weak, recompose more boldly within the same concept.`
+      ? `DESIGN JUDGMENT: First assess the asset like a senior game marketing artist. If it already works and only needs polish, make surgical refinements. If its shelf read is weak, recompose more boldly within the same concept. ${antiGeneric}`
       : score >= 70
-        ? `DESIGN JUDGMENT: The analyzer scored this asset ${score}/100 - it already works. Act as a senior artist doing a refinement pass: surgical improvements only (scale, crop, contrast, cleanup). Do not redesign what is not broken.`
-        : `DESIGN JUDGMENT: The analyzer scored this asset ${score}/100 - the shelf read is weak. Act as a senior artist doing a concept-strengthening pass: recompose boldly using the SAME subjects, palette, and idea. Bigger focal commitment, cleaner staging, stronger silhouette. Same concept, executed like a top-grossing icon.`;
+        ? `DESIGN JUDGMENT: The analyzer scored this asset ${score}/100 - it already works. Act as a senior artist doing a refinement pass: purposeful improvements only (focal scale, crop, lighting, contrast, cleanup). Keep the composition; elevate the craft. Do not redesign what is not broken. ${antiGeneric}`
+        : `DESIGN JUDGMENT: The analyzer scored this asset ${score}/100 - the shelf read is weak. Act as a senior artist doing a concept-strengthening pass: recompose boldly using the SAME subjects, palette, and idea. Bigger focal commitment, dramatic lighting on the hero, cleaner staging, stronger silhouette, deeper background separation. Same concept, executed like a top-grossing title. ${antiGeneric}`;
+
 
   const variantStyle =
     (req.variantIndex ?? 0) === 0
