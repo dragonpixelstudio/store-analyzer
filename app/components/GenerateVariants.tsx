@@ -291,16 +291,11 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
                     }}
                   >
                     <div className="flex min-h-[38px] items-center justify-between gap-2 px-3 pt-2.5">
-                      <span className="text-[12px] font-black uppercase tracking-[.06em] text-[var(--cyan)]">
+                      <span className="truncate text-[12px] font-black uppercase tracking-[.06em] text-[var(--cyan)]">
                         After · {titles[i]}
-                        {isBest && (
-                          <span className="ml-2 rounded-full border border-[rgba(105,255,0,.4)] bg-[rgba(105,255,0,.1)] px-2 py-0.5 text-[9.5px] font-black uppercase tracking-[.08em] text-[var(--green)]">
-                            Top pick
-                          </span>
-                        )}
                       </span>
                       {typeof v.score === "number" && (
-                        <span className="font-brand flex-none text-[13px] font-black" style={{ color: deltaColor(deltas[i]) === "var(--faint)" ? "var(--cyan)" : deltaColor(deltas[i]) }}>
+                        <span className="font-brand flex-none whitespace-nowrap text-[13px] font-black" style={{ color: deltaColor(deltas[i]) === "var(--faint)" ? "var(--cyan)" : deltaColor(deltas[i]) }}>
                           {v.score}<span className="text-[10px] text-[var(--faint)]">/100</span>
                           {deltas[i] !== null && deltas[i] !== 0 && (
                             <span className="ml-1">({(deltas[i] as number) > 0 ? "+" : ""}{deltas[i]})</span>
@@ -313,13 +308,18 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
                         Scored below your original - this one&apos;s free, credit refunded.
                       </div>
                     )}
-                    <div className="mt-2 overflow-hidden">
+                    <div className="relative mt-2 overflow-hidden">
                       {/* eslint-disable-next-line @next/next/no-img-element -- base64 AI output rendered inline */}
                       <img
                         src={`data:${v.mimeType};base64,${v.base64}`}
                         alt={`${titles[i]} of your asset`}
                         className="w-full transition-transform duration-300 group-hover:scale-[1.03]"
                       />
+                      {isBest && (
+                        <span className="absolute left-2 top-2 rounded-full border border-[rgba(105,255,0,.5)] bg-[#0c1606]/90 px-2.5 py-1 text-[10px] font-black uppercase tracking-[.08em] text-[var(--green)] shadow-[0_2px_10px_rgba(0,0,0,.5)]">
+                          ★ Top pick
+                        </span>
+                      )}
                     </div>
                     <figcaption className="flex items-center justify-between gap-2 px-3 py-2">
                       <span className="text-[11.5px] font-semibold text-[var(--faint)]">{blurbs[i]}</span>

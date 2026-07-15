@@ -26,6 +26,7 @@ import {
   perceptualSignature,
   signaturesClose,
 } from "@/lib/imageNormalize";
+import { identifyAsset, ROLE_LABEL } from "@/lib/storeSpecs";
 import { callerKey, dailyReportPeriod, getCreditStore } from "@/lib/credits";
 import crypto from "node:crypto";
 import { ipRatelimit, globalRatelimit, getClientIp, redis } from "@/lib/ratelimit";
@@ -211,7 +212,7 @@ type ImagePartResult =
 
 // Bump this whenever prompt/scoring logic changes so stale cached reports
 // are naturally invalidated.
-const ANALYZER_PROMPT_VERSION = "consistency-v7c-2026-07-15";
+const ANALYZER_PROMPT_VERSION = "specs-v8-2026-07-15";
 const ANALYSIS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days
 
 function stableHash(value: unknown) {
@@ -235,17 +236,34 @@ function makeAnalysisCacheKey(args: {
 }
 
 // Deterministic export-size guidance, computed server-side so it can never
-// leak into the model's observations and shift the score.
+// leak into the model's observations and shift the score. Driven by the
+// store-spec database: dimensions that exactly match a known store size (or a
+// clean multiple) identify the asset, so a 920×430 upload is recognised as a
+// 2x Steam header capsule instead of being lectured about Play sizes.
 function specNoteFor(meta: AnalyzerAssetMeta): string | null {
   const { providedKind, widthPx, heightPx } = meta;
-  if (providedKind === "icon" && (widthPx < 512 || heightPx < 512)) {
-    return `Icon uploaded at ${widthPx}×${heightPx} - export at 512×512 for Google Play (1024×1024 for the App Store). This does not affect the score.`;
+  const match = identifyAsset(widthPx, heightPx);
+
+  if (match && match.confidence === "exact" && match.spec.role !== providedKind) {
+    const scaleNote =
+      Math.abs(match.scale - 1) > 0.01 ? ` (${match.spec.baseW}×${match.spec.baseH} ×${+match.scale.toFixed(2)})` : "";
+    return `${widthPx}×${heightPx} is exactly the ${match.spec.name} size${scaleNote}, but it was reviewed as a ${ROLE_LABEL[providedKind].toLowerCase()}. If it's really a ${match.spec.name}, switch its type and re-analyze for a platform-accurate review.`;
   }
-  if (providedKind === "steamCapsule" && widthPx < 460) {
-    return `Capsule uploaded at ${widthPx}×${heightPx} - Steam's header capsule needs at least 460×215. This does not affect the score.`;
+
+  if (match && match.spec.role === providedKind && match.scale < 0.99) {
+    return `${ROLE_LABEL[providedKind]} uploaded at ${widthPx}×${heightPx} - export at least ${match.spec.baseW}×${match.spec.baseH} for the ${match.spec.name}. This does not affect the score.`;
   }
-  if (providedKind === "featureGraphic" && widthPx < 1024) {
-    return `Feature graphic uploaded at ${widthPx}×${heightPx} - Google Play expects 1024×500. This does not affect the score.`;
+
+  if (!match) {
+    if (providedKind === "icon" && (widthPx < 512 || heightPx < 512)) {
+      return `Icon uploaded at ${widthPx}×${heightPx} - export at 512×512 for Google Play (1024×1024 for the App Store). This does not affect the score.`;
+    }
+    if (providedKind === "steamCapsule" && widthPx < 460) {
+      return `Capsule uploaded at ${widthPx}×${heightPx} - Steam's header capsule needs at least 460×215. This does not affect the score.`;
+    }
+    if (providedKind === "featureGraphic" && widthPx < 1024) {
+      return `Feature graphic uploaded at ${widthPx}×${heightPx} - Google Play expects 1024×500. This does not affect the score.`;
+    }
   }
   return null;
 }

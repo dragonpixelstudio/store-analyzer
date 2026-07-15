@@ -208,6 +208,207 @@ function GridTile({ entry, rank, dark }: { entry: RowEntry; rank: number; dark: 
   );
 }
 
+// ---------------------------------------------------------------------------
+// Steam store preview: the uploaded capsule rendered inside a simulated Steam
+// search-results list and a "More like this" strip, between generic decoy
+// capsules - the exact sizes Steam actually shows it at.
+// ---------------------------------------------------------------------------
+
+type WideDecoy = {
+  name: string;
+  price: string;
+  from: string;
+  to: string;
+  glyph: Decoy["glyph"];
+  glyphColor: string;
+};
+
+const WIDE_DECOYS: WideDecoy[] = [
+  { name: "Moon Peak", price: "$14.99", from: "#1b3a5e", to: "#0a1526", glyph: "star", glyphColor: "#ffd23d" },
+  { name: "Void Circuit", price: "$9.99", from: "#2d1054", to: "#12061f", glyph: "bolt", glyphColor: "#18e0ff" },
+  { name: "Ember Vale", price: "$19.99", from: "#5e2a12", to: "#1f0d05", glyph: "gem", glyphColor: "#ffb02e" },
+  { name: "Rust & Bolts", price: "$7.99", from: "#3a3f45", to: "#14171a", glyph: "shield", glyphColor: "#c4d4e8" },
+];
+
+function WideDecoyCapsule({ decoy, className }: { decoy: WideDecoy; className: string }) {
+  const gradId = `dpx-wdecoy-${decoy.glyph}-${decoy.from.slice(1)}`;
+  return (
+    <svg viewBox="0 0 231 87" className={className} role="img" aria-label={`${decoy.name} (sample game)`}>
+      <defs>
+        <linearGradient id={gradId} x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0%" stopColor={decoy.from} />
+          <stop offset="100%" stopColor={decoy.to} />
+        </linearGradient>
+      </defs>
+      <rect width="231" height="87" fill={`url(#${gradId})`} />
+      <g transform="translate(10,12) scale(0.98)">
+        <DecoyGlyph glyph={decoy.glyph} color={decoy.glyphColor} />
+      </g>
+      <text
+        x="88"
+        y="52"
+        fill="#ffffff"
+        fontFamily="Arial, sans-serif"
+        fontSize="19"
+        fontWeight="800"
+        letterSpacing=".5"
+      >
+        {decoy.name.toUpperCase()}
+      </text>
+    </svg>
+  );
+}
+
+type SteamEntry = { kind: "you"; url: string } | { kind: "decoy"; decoy: WideDecoy };
+
+function SteamSearchRow({ entry }: { entry: SteamEntry }) {
+  const isYou = entry.kind === "you";
+  return (
+    <div
+      className="flex items-center gap-3 px-3 py-2"
+      style={
+        isYou
+          ? {
+              outline: "2px solid var(--cyan)",
+              outlineOffset: "-2px",
+              borderRadius: 8,
+              background: "rgba(24,224,255,.06)",
+            }
+          : { background: "#1b2838", borderRadius: 4 }
+      }
+    >
+      {isYou ? (
+        // eslint-disable-next-line @next/next/no-img-element -- user's uploaded capsule object URL
+        <img
+          src={entry.url}
+          alt="Your capsule in Steam search results"
+          className="h-[45px] w-[120px] flex-none rounded-[3px] object-cover"
+        />
+      ) : (
+        <WideDecoyCapsule decoy={entry.decoy} className="h-[45px] w-[120px] flex-none rounded-[3px]" />
+      )}
+      <div className="min-w-0 flex-1">
+        <div className="truncate text-[13px] font-semibold text-[#dbe6ee]">
+          {isYou ? "Your game" : entry.decoy.name}
+        </div>
+        <div className="text-[10.5px] font-medium text-[#7c8b98]">
+          {isYou ? "This is your capsule" : "Base Game"}
+        </div>
+      </div>
+      <span className="flex-none text-[12px] font-semibold text-[#c6d4df]">
+        {isYou ? "Coming soon" : entry.decoy.price}
+      </span>
+    </div>
+  );
+}
+
+export function SteamCapsuleShelf({ capsuleUrl }: { capsuleUrl: string }) {
+  const rows: SteamEntry[] = [
+    { kind: "decoy", decoy: WIDE_DECOYS[0] },
+    { kind: "you", url: capsuleUrl },
+    { kind: "decoy", decoy: WIDE_DECOYS[1] },
+    { kind: "decoy", decoy: WIDE_DECOYS[2] },
+  ];
+  const strip: SteamEntry[] = [
+    { kind: "decoy", decoy: WIDE_DECOYS[3] },
+    { kind: "you", url: capsuleUrl },
+    { kind: "decoy", decoy: WIDE_DECOYS[0] },
+    { kind: "decoy", decoy: WIDE_DECOYS[1] },
+  ];
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div>
+        <div className="mb-2 text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--faint)]">
+          Steam search results · list size
+        </div>
+        <div className="flex flex-col gap-1.5 rounded-2xl border border-[var(--edge)] p-2" style={{ background: "#16202d" }}>
+          {rows.map((entry, i) => (
+            <SteamSearchRow key={i} entry={entry} />
+          ))}
+        </div>
+      </div>
+
+      <div>
+        <div className="mb-2 text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--faint)]">
+          More like this · browse strip
+        </div>
+        <div className="rounded-2xl border border-[var(--edge)] p-3" style={{ background: "#16202d" }}>
+          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4">
+            {strip.map((entry, i) => {
+              const isYou = entry.kind === "you";
+              return (
+                <div key={i} className="min-w-0">
+                  <div
+                    className="overflow-hidden rounded-[4px]"
+                    style={isYou ? { outline: "2px solid var(--cyan)", outlineOffset: "-2px" } : undefined}
+                  >
+                    {isYou ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- user's uploaded capsule object URL
+                      <img src={entry.url} alt="Your capsule in the browse strip" className="aspect-[231/87] w-full object-cover" />
+                    ) : (
+                      <WideDecoyCapsule decoy={entry.decoy} className="aspect-[231/87] w-full" />
+                    )}
+                  </div>
+                  <div className="mt-1 truncate text-[11px] font-semibold" style={{ color: isYou ? "var(--cyan)" : "#9fb0bd" }}>
+                    {isYou ? "Your game" : entry.decoy.name}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+
+      <p className="text-[13px] font-semibold italic text-[var(--faint)]">
+        Simulated Steam surfaces with sample games - your capsule at the sizes shoppers
+        actually scan. If the title and hook don&apos;t read here, they don&apos;t read on Steam.
+      </p>
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Store listing preview: the uploaded screenshots rendered as the mobile-store
+// screenshot carousel, in upload order - the surface that does most of the
+// selling on Google Play and the App Store.
+// ---------------------------------------------------------------------------
+
+export function ScreenshotCarousel({ shots }: { shots: string[] }) {
+  return (
+    <div className="flex flex-col gap-3">
+      <div className="mb-0 text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--faint)]">
+        Listing carousel · your order
+      </div>
+      <div className="rounded-2xl border border-[var(--edge)] p-3" style={{ background: "#131720" }}>
+        <div className="flex gap-2.5 overflow-x-auto pb-1">
+          {shots.slice(0, 3).map((url, i) => (
+            <div key={i} className="relative flex-none">
+              {/* eslint-disable-next-line @next/next/no-img-element -- user's uploaded screenshot object URL */}
+              <img
+                src={url}
+                alt={`Screenshot ${i + 1} in the store carousel`}
+                className="h-44 w-auto rounded-lg border border-white/10 object-cover"
+                style={i === 0 ? { outline: "2px solid var(--cyan)", outlineOffset: "-2px" } : undefined}
+              />
+              <span className="absolute left-1.5 top-1.5 flex h-5 w-5 items-center justify-center rounded-full bg-black/70 text-[10.5px] font-black text-white">
+                {i + 1}
+              </span>
+            </div>
+          ))}
+          <div className="flex h-44 w-24 flex-none items-center justify-center rounded-lg border border-dashed border-white/15 text-[11px] font-semibold text-[#5c6675]">
+            + more
+          </div>
+        </div>
+      </div>
+      <p className="text-[13px] font-semibold italic text-[var(--faint)]">
+        Shoppers see your screenshots in this exact order - and most never swipe past the
+        second. Your first screenshot has to sell the game on its own.
+      </p>
+    </div>
+  );
+}
+
 export default function ShelfSimulator({ iconUrl }: { iconUrl: string }) {
   const rowEntries: RowEntry[] = [
     { kind: "decoy", decoy: DECOYS[0] },

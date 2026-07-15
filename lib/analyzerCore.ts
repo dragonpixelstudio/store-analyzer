@@ -841,10 +841,42 @@ function computeShipDecision(
   return { label: "FIX BEFORE SHIPPING", tone: "warn", sub: `The ${lower} needs work first.` };
 }
 
+// What the observations would look like if every listed visual fix landed:
+// composition problems resolved, nothing gained that the art doesn't already
+// have. Gameplay comprehension and emotional signal stay untouched - a crop
+// or contrast pass cannot invent content, so the potential stays honest.
+function simulateFixedObservations(obs: Observations): Observations {
+  return {
+    ...obs,
+    shelfTest: {
+      ...obs.shelfTest,
+      focalPointClear: true,
+      playerOrMainSubjectVisible: true,
+      smallSizeRisk: false,
+      lostElements: undefined,
+      dominantElement:
+        obs.shelfTest?.dominantElement ||
+        obs.shelfTest?.visibleElements?.[0] ||
+        "primary subject",
+    },
+    clickTest: {
+      ...obs.clickTest,
+      clickBlockers: undefined,
+    },
+    polish: {
+      ...obs.polish,
+      weaknesses: undefined,
+    },
+    whatHurtsConversion: undefined,
+  };
+}
+
 export function calculateDragonPixelScores(
   obs: Observations,
   reviewMode: ReviewMode,
-  flags: { hasIcon: boolean; hasScreens: boolean; hasCreatives: boolean }
+  flags: { hasIcon: boolean; hasScreens: boolean; hasCreatives: boolean },
+  /** Internal recursion guard for the potential-after-fixes simulation. */
+  internal = false
 ) {
   if (obs.notGameAsset) {
     const scores = {
@@ -1064,18 +1096,23 @@ export function calculateDragonPixelScores(
     roundToNearestFive(clampScore(totalWeight > 0 ? (weightedScore / totalWeight) * 100 : 0))
   );
 
-  const potentialAfterFixes = Math.min(
-    95,
-    roundToNearestFive(
-      clampScore(
-        launchScore +
-          Math.min(
-            22,
-            len(obs.dragonPixelFixes) * 4 + len(obs.whatHurtsConversion) * 3
-          )
-      )
-    )
-  );
+  // Potential is NOT a marketing multiplier: it is this same engine re-run on
+  // observations where the listed visual fixes have landed. If the honest
+  // ceiling is +5, it shows +5. (The cast breaks TS's self-referential
+  // return-type inference on the depth-1 recursion.)
+  const potentialAfterFixes: number = internal
+    ? launchScore
+    : Math.max(
+        launchScore,
+        (
+          calculateDragonPixelScores(
+            simulateFixedObservations(obs),
+            reviewMode,
+            flags,
+            true
+          ) as { launchScore: number }
+        ).launchScore
+      );
 
   // Human-facing breakdown: a number where assessed, a status otherwise.
   const fmt = (n: number) => `${n}/100`;

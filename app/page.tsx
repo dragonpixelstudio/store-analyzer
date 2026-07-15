@@ -5,7 +5,11 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SiteNav } from "@/app/components/SiteChrome";
 import GenerateVariants, { type GenerateSource } from "@/app/components/GenerateVariants";
-import ShelfSimulator from "@/app/components/ShelfSimulator";
+import ShelfSimulator, {
+  ScreenshotCarousel,
+  SteamCapsuleShelf,
+} from "@/app/components/ShelfSimulator";
+import { identifyAsset, inferPlatform } from "@/lib/storeSpecs";
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2 MB
 const MAX_SCREENSHOTS = 3;
@@ -382,9 +386,13 @@ function parsePayload(raw: string): AnalyzePayload | null {
 function formatSize(bytes: number) {
   return (bytes / 1048576).toFixed(2) + " MB";
 }
-// square-ish => icon, otherwise screenshot
+// Known store dimensions identify the asset outright (920×430 = 2x Steam
+// header capsule, not a Play feature graphic); the aspect-ratio heuristic is
+// only the fallback for sizes the spec database doesn't recognise.
 function classify(w: number, h: number): Role {
   if (!w || !h) return "screenshot";
+  const match = identifyAsset(w, h);
+  if (match) return match.spec.role;
   const ar = w / h;
   if (ar >= 0.9 && ar <= 1.15) return "icon"; // square → icon
   if (ar < 0.9) return "screenshot"; // portrait → phone screenshot
@@ -969,6 +977,13 @@ export default function Home() {
       fd.append("creatives", c.file);
       fd.append("creativeKinds", c.role);
     });
+    // Target platform derived from what the dimensions say the assets are, so
+    // the review and generation know whether this is Steam or mobile.
+    const detectedPlatform =
+      usable.some((a) => a.role === "steamCapsule")
+        ? "steam"
+        : inferPlatform(usable.map((a) => ({ widthPx: a.w, heightPx: a.h })));
+    if (detectedPlatform) fd.append("platform", detectedPlatform);
 
     setLoading(true);
     setError("");
@@ -1438,7 +1453,7 @@ export default function Home() {
                 )}
                 {potential != null && score != null && potential > score && (
                   <div className="font-brand mt-1.5 text-[13px] font-bold text-[var(--green)]">
-                    +{potential - score} reachable → {potential}/100
+                    up to {potential}/100 if every fix below lands
                   </div>
                 )}
               </div>
@@ -1476,12 +1491,32 @@ export default function Home() {
             </ReportCard>
           )}
 
-          {/* STORE SHELF SIMULATOR - the icon in context, next to competitors */}
+          {/* STORE CONTEXT - every asset shown where it will actually live */}
           {previewAsset && (
             <ReportCard title="Store shelf simulator">
               <ShelfSimulator iconUrl={previewAsset.url} />
             </ReportCard>
           )}
+          {(() => {
+            const capsule = assets.find(
+              (a) => a.role === "steamCapsule" && !a.error && !a.overflow
+            );
+            return capsule ? (
+              <ReportCard title="Steam store preview">
+                <SteamCapsuleShelf capsuleUrl={capsule.url} />
+              </ReportCard>
+            ) : null;
+          })()}
+          {(() => {
+            const shots = assets.filter(
+              (a) => a.role === "screenshot" && !a.error && !a.overflow
+            );
+            return shots.length > 0 ? (
+              <ReportCard title="Store listing preview">
+                <ScreenshotCarousel shots={shots.map((a) => a.url)} />
+              </ReportCard>
+            ) : null;
+          })()}
 
           {/* WHY IT SCORED THIS - 3 strengths / 3 weaknesses, no essay */}
           {(strengths.length > 0 || weaknesses.length > 0) && (

@@ -178,7 +178,7 @@ export default async function SharedReportPage({ params }: { params: Params }) {
               )}
               {c.potentialAfterFixes > c.launchScore && (
                 <div className="font-brand mt-1.5 text-[13px] font-bold text-[var(--green)]">
-                  +{c.potentialAfterFixes - c.launchScore} reachable → {c.potentialAfterFixes}/100
+                  up to {c.potentialAfterFixes}/100 if every fix lands
                 </div>
               )}
             </div>
