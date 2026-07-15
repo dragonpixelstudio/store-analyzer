@@ -13,7 +13,15 @@ export type GenerateSource = {
   assetType: FixAssetType;
 };
 
-type Variant = { base64: string; mimeType: string };
+type Variant = {
+  base64: string;
+  mimeType: string;
+  /** Re-scored with the same engine as the original launch score. */
+  score?: number;
+  scoreSummary?: string;
+  /** False when the variant scored below the original and was refunded. */
+  charged?: boolean;
+};
 
 type Props = {
   sources: GenerateSource[];
@@ -158,8 +166,17 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
         </button>
         <span className="text-[12px] font-semibold text-[var(--faint)]">{costLine}</span>
         {insufficientCredits && (
-          <span className="text-[12px] font-semibold text-[var(--magenta)]">
-            Not enough credits for this generation.
+          <span className="flex items-center gap-2.5">
+            <span className="text-[12px] font-semibold text-[var(--magenta)]">
+              Not enough credits.
+            </span>
+            <a
+              href="/pricing"
+              className="rounded-full px-4 py-2 text-[12px] font-black text-[#1a1205] transition hover:-translate-y-0.5 hover:brightness-110"
+              style={{ background: "linear-gradient(120deg,var(--gold),#ff8a3d)" }}
+            >
+              Get credits
+            </a>
           </span>
         )}
       </div>
@@ -173,7 +190,7 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
       />
 
       <p className="mt-2 text-[12px] font-semibold text-[var(--faint)]">
-        Both variants apply your top 3 ranked fixes in priority order. The Precision fix makes exact algorithmic corrections, guaranteed visible. The Designer pass acts like a senior game artist: refining if the asset already works, recomposing boldly within the same concept if the shelf read is weak. You are only charged for delivered images. Works on your game&apos;s own art; people and faces are out of scope.
+        Both variants apply your top 3 ranked fixes in priority order. The Precision fix is a deterministic crop and clarity pass with no AI reinterpretation. The Designer pass acts like a senior game artist: refining if the asset already works, recomposing boldly within the same concept if the shelf read is weak. Every result is re-scored by the same engine that scored your original - and if a variant scores below your original, it&apos;s free. Works on your game&apos;s own art; people and faces are out of scope.
       </p>
 
       {error && (
@@ -182,71 +199,146 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
         </p>
       )}
 
-      {variants.length > 0 && selected && (
-        <div className="mt-5">
-          <div className="grid grid-cols-1 gap-5 lg:grid-cols-[minmax(180px,260px)_1fr] lg:items-start">
-            {/* Reference original: small, for side-by-side checking */}
-            <figure className="lg:sticky lg:top-4">
-              <div className="mb-1.5 text-[10.5px] font-black uppercase tracking-[.12em] text-[var(--faint)]">
-                Your original
-              </div>
-              {/* eslint-disable-next-line @next/next/no-img-element -- object URL preview */}
-              <img
-                src={selected.url}
-                alt="Original asset"
-                className="w-full rounded-lg border border-[var(--edge)] opacity-90"
-              />
-              <figcaption className="mt-1.5 text-[11px] font-semibold text-[var(--faint)]">
-                Reference. Compare the improved versions against this.
-              </figcaption>
-            </figure>
+      {variants.length > 0 && selected && (() => {
+        const hasBaseline = typeof assetScore === "number";
+        const titles = variants.map((_, i) =>
+          i === 0 ? "Precision fix" : i === 1 ? "Designer pass" : `Variant ${i + 1}`
+        );
+        const blurbs = variants.map((_, i) =>
+          i === 0
+            ? "Deterministic crop and clarity pass. No AI reinterpretation."
+            : i === 1
+              ? "Senior-artist pass on the same concept."
+              : "Alternative take."
+        );
+        const deltas = variants.map((v) =>
+          typeof v.score === "number" && hasBaseline
+            ? v.score - (assetScore as number)
+            : null
+        );
+        const deltaColor = (delta: number | null) =>
+          delta === null
+            ? "var(--faint)"
+            : delta > 0
+              ? "var(--green)"
+              : delta < 0
+                ? "var(--magenta)"
+                : "var(--gold)";
+        // Highest re-scored variant is the recommended pick.
+        let bestIndex = -1;
+        variants.forEach((v, i) => {
+          if (typeof v.score !== "number") return;
+          if (bestIndex === -1 || (v.score ?? 0) > (variants[bestIndex].score ?? 0)) {
+            bestIndex = i;
+          }
+        });
+        const bestDelta = bestIndex >= 0 ? deltas[bestIndex] : null;
+        const refundedCount = variants.filter((v) => v.charged === false).length;
 
-            {/* Improved outputs: larger, the focus of the card */}
-            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+        return (
+          <div className="mt-6">
+            <div className="mb-1.5 text-[11px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
+              Before / after
+            </div>
+            {/* one honest line instead of a table: the verdict of the run */}
+            <p className="mb-4 text-[13px] font-semibold text-[var(--faint)]">
+              {bestDelta !== null && bestDelta > 0
+                ? `Best result: ${titles[bestIndex]} at ${variants[bestIndex].score}/100 (+${bestDelta} vs your original).`
+                : refundedCount > 0
+                  ? `No variant beat your original this run - ${refundedCount === variants.length ? "nothing was charged" : `${refundedCount} credit${refundedCount > 1 ? "s" : ""} refunded`}. Try a steer below and regenerate.`
+                  : "Each version is re-scored by the same engine that scored your original."}
+            </p>
+
+            {/* side-by-side: original first, improved versions after; all
+                three stay on one row above mobile so no card is orphaned */}
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+              <figure className="overflow-hidden rounded-xl border border-[var(--edge)] bg-black/20">
+                <div className="flex min-h-[38px] items-center justify-between px-3 pt-2.5">
+                  <span className="text-[12px] font-black uppercase tracking-[.06em] text-[var(--faint)]">
+                    Before · your original
+                  </span>
+                  {hasBaseline && (
+                    <span className="font-brand text-[13px] font-black text-[var(--muted)]">
+                      {assetScore}<span className="text-[10px] text-[var(--faint)]">/100</span>
+                    </span>
+                  )}
+                </div>
+                <div className="mt-2">
+                  {/* eslint-disable-next-line @next/next/no-img-element -- object URL preview */}
+                  <img
+                    src={selected.url}
+                    alt="Original asset"
+                    className="w-full opacity-90"
+                  />
+                </div>
+                <figcaption className="px-3 py-2 text-[11.5px] font-semibold text-[var(--faint)]">
+                  Reference. Compare each improved version against this.
+                </figcaption>
+              </figure>
+
               {variants.map((v, i) => {
-                const title = i === 0 ? "Precision fix" : i === 1 ? "Designer pass" : `Variant ${i + 1}`;
-                const blurb =
-                  i === 0
-                    ? "Exact algorithmic corrections, guaranteed visible."
-                    : i === 1
-                      ? "Senior-artist pass on the same concept."
-                      : "Alternative take.";
+                const isBest = i === bestIndex && deltas[i] !== null && (deltas[i] as number) > 0;
+                const notCharged = v.charged === false;
                 return (
                   <figure
                     key={i}
-                    className="group overflow-hidden rounded-xl border border-[var(--edge)] bg-black/30 transition hover:border-[rgba(24,224,255,.42)]"
+                    className="group overflow-hidden rounded-xl bg-black/30 transition"
+                    style={{
+                      border: isBest
+                        ? "1.5px solid rgba(105,255,0,.5)"
+                        : "1px solid var(--edge)",
+                      boxShadow: isBest ? "0 14px 40px -24px rgba(105,255,0,.5)" : undefined,
+                    }}
                   >
-                    <div className="flex items-center justify-between px-3 pt-2.5">
+                    <div className="flex min-h-[38px] items-center justify-between gap-2 px-3 pt-2.5">
                       <span className="text-[12px] font-black uppercase tracking-[.06em] text-[var(--cyan)]">
-                        {title}
+                        After · {titles[i]}
+                        {isBest && (
+                          <span className="ml-2 rounded-full border border-[rgba(105,255,0,.4)] bg-[rgba(105,255,0,.1)] px-2 py-0.5 text-[9.5px] font-black uppercase tracking-[.08em] text-[var(--green)]">
+                            Top pick
+                          </span>
+                        )}
                       </span>
-                      <button
-                        type="button"
-                        onClick={() => download(v, i)}
-                        className="inline-flex items-center gap-1 rounded-full border border-[rgba(24,224,255,.34)] bg-[rgba(24,224,255,.08)] px-2.5 py-1 text-[10.5px] font-bold text-[var(--cyan)] transition hover:border-[rgba(24,224,255,.56)] hover:bg-[rgba(24,224,255,.14)]"
-                      >
-                        <span aria-hidden="true">↓</span>
-                        Download
-                      </button>
+                      {typeof v.score === "number" && (
+                        <span className="font-brand flex-none text-[13px] font-black" style={{ color: deltaColor(deltas[i]) === "var(--faint)" ? "var(--cyan)" : deltaColor(deltas[i]) }}>
+                          {v.score}<span className="text-[10px] text-[var(--faint)]">/100</span>
+                          {deltas[i] !== null && deltas[i] !== 0 && (
+                            <span className="ml-1">({(deltas[i] as number) > 0 ? "+" : ""}{deltas[i]})</span>
+                          )}
+                        </span>
+                      )}
                     </div>
+                    {notCharged && (
+                      <div className="mx-3 mt-2 rounded-lg border border-[rgba(255,194,61,.32)] bg-[rgba(255,194,61,.07)] px-3 py-1.5 text-[11px] font-bold text-[#e8cf9a]">
+                        Scored below your original - this one&apos;s free, credit refunded.
+                      </div>
+                    )}
                     <div className="mt-2 overflow-hidden">
                       {/* eslint-disable-next-line @next/next/no-img-element -- base64 AI output rendered inline */}
                       <img
                         src={`data:${v.mimeType};base64,${v.base64}`}
-                        alt={`${title} of your asset`}
+                        alt={`${titles[i]} of your asset`}
                         className="w-full transition-transform duration-300 group-hover:scale-[1.03]"
                       />
                     </div>
-                    <figcaption className="px-3 py-2 text-[11.5px] font-semibold text-[var(--faint)]">
-                      {blurb}
+                    <figcaption className="flex items-center justify-between gap-2 px-3 py-2">
+                      <span className="text-[11.5px] font-semibold text-[var(--faint)]">{blurbs[i]}</span>
+                      <button
+                        type="button"
+                        onClick={() => download(v, i)}
+                        className="inline-flex flex-none items-center gap-1 rounded-full border border-[rgba(24,224,255,.34)] bg-[rgba(24,224,255,.08)] px-3 py-1.5 text-[11px] font-bold text-[var(--cyan)] transition hover:border-[rgba(24,224,255,.56)] hover:bg-[rgba(24,224,255,.14)]"
+                      >
+                        <span aria-hidden="true">↓</span>
+                        Download
+                      </button>
                     </figcaption>
                   </figure>
                 );
               })}
             </div>
           </div>
-        </div>
-      )}
+        );
+      })()}
     </div>
   );
 }

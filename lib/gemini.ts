@@ -293,14 +293,14 @@ export async function fixAsset(req: FixRequest, apiKey: string) {
   // a bolder recomposition of the SAME concept. The analyzer score steers this
   // so the model does not over-edit good work or under-edit weak work.
   const score = typeof req.assetScore === "number" ? req.assetScore : null;
-  const antiGeneric = `CRAFT BAR: You are a top-tier game marketing artist, not a filter. Avoid generic AI polish (uniform glow, symmetrical haze, muddy gradients, plastic sheen). Every change must be a deliberate art-direction decision: intentional focal lighting, purposeful negative space, deliberate colour accents, real depth and material. Cheap uniform enhancement is a failed result.`;
+  const antiGeneric = `CRAFT BAR: You are a top-tier game marketing artist, not a filter. FORBIDDEN ADDITIONS - never introduce anything from this list that is not already in the source image: light beams, lens flares, god rays, added glow, halos, sparkles, particles, dust, fog, haze, smoke, vignettes, gradient washes, bloom, or bokeh. These read as cheap AI polish and are scored as LOW commercial quality by the reviewer. Improvement must come from scale, crop, silhouette, simplification, and edge contrast - not from adding effects.`;
 
   const designJudgment =
     score === null
       ? `DESIGN JUDGMENT: First assess the asset like a senior game marketing artist. If it already works and only needs polish, make surgical refinements. If its shelf read is weak, recompose more boldly within the same concept. ${antiGeneric}`
       : score >= 70
-        ? `DESIGN JUDGMENT: The analyzer scored this asset ${score}/100 - it already works. Act as a senior artist doing a refinement pass: purposeful improvements only (focal scale, crop, lighting, contrast, cleanup). Keep the composition; elevate the craft. Do not redesign what is not broken. ${antiGeneric}`
-        : `DESIGN JUDGMENT: The analyzer scored this asset ${score}/100 - the shelf read is weak. Act as a senior artist doing a concept-strengthening pass: recompose boldly using the SAME subjects, palette, and idea. Bigger focal commitment, dramatic lighting on the hero, cleaner staging, stronger silhouette, deeper background separation. Same concept, executed like a top-grossing title. ${antiGeneric}`;
+        ? `DESIGN JUDGMENT: The analyzer scored this asset ${score}/100 - it already works. Act as a senior artist doing a refinement pass: purposeful improvements only (focal scale, crop, contrast, cleanup). Keep the composition; elevate the craft. Do not redesign what is not broken. ${antiGeneric}`
+        : `DESIGN JUDGMENT: The analyzer scored this asset ${score}/100 - the shelf read is weak. Act as a senior artist doing a concept-strengthening pass: recompose boldly using the SAME subjects, palette, and idea. Bigger focal commitment, harder edge contrast where the hero meets the background, cleaner staging, stronger silhouette. Same concept, executed like a top-grossing title. ${antiGeneric}`;
 
 
   const variantStyle =
@@ -336,6 +336,9 @@ export async function fixAsset(req: FixRequest, apiKey: string) {
 
   const prompt = [
     "Edit the provided image directly. This is controlled asset editing, not reimagining.",
+    score !== null
+      ? `SUCCESS TARGET: the input image scored ${score}/100 with an independent store-conversion reviewer. Your output will be re-scored by the same reviewer with the same rubric and MUST exceed ${score}/100. An output that scores lower is a failed, unpaid generation.`
+      : "",
     `EDIT MODE: ${contract.mode}.`,
     `EDIT STRENGTH: ${contract.editStrength}. Paid fixes default to clear visible improvement, not subtle change.`,
     PRESERVE_RULES[req.assetType],
@@ -345,6 +348,13 @@ export async function fixAsset(req: FixRequest, apiKey: string) {
     `SUCCESS CHECKS - verify before output:\n${successList}`,
     variantStyle,
     strictOutput,
+    `REVIEW RUBRIC - the output is re-scored by the same independent reviewer that scored the input, and an output that scores BELOW the input is a failed generation:
+1. 32px shelf readability (heaviest weight): every element you keep must still read at 32px. Anything too thin, faint, or small to survive must be removed or merged into a larger shape - never left as noise.
+2. One dominant focal subject: a single element must clearly dominate the frame. Several equal-weight elements lower the score.
+3. Figure-ground separation: clean, hard edges between subject and background. Raise contrast AT the silhouette boundary; do not wrap the subject in new glow.
+4. Genre and mood signal: make the existing subjects read faster; never swap them for different ones.
+5. Commercial polish: deliberate, confident craft. Added effects (glow, beams, flares, particles, haze) are graded as LOW polish, not high.
+NET RULE: removal and enlargement beat addition. When unsure, remove or enlarge - never add.`,
     `DRAGON PIXEL HOUSE EDIT POLICY:
 - Keep the game's identity. Do not randomly reinvent it.
 - Visible improvements must come from scale, crop, silhouette, simplification, edge separation, and contrast.

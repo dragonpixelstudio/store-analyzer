@@ -4,9 +4,12 @@ import { fixAsset, type FixRequest, violatesGuardrails } from "@/lib/gemini";
 import { fixIpRatelimit, fixGlobalRatelimit, getClientIp } from "@/lib/ratelimit";
 import sharp from "sharp";
 import { makeDeterministicIconPolish, makeDeterministicWidePolish, visibleDifferenceScore } from "@/lib/iconPolish";
+import { rescoreSingleAsset } from "@/lib/rescore";
 
 export const runtime = "nodejs";
-export const maxDuration = 60;
+// Worst case per request: up to 3 image generations plus their re-scores on
+// the designer slot (near-copy retry + score-gated corrective retry).
+export const maxDuration = 120;
 
 const MAX_IMAGE_BYTES = 4 * 1024 * 1024;
 const ALLOWED_TYPES = new Set(["icon", "screenshot", "capsule", "feature-graphic"]);
@@ -180,86 +183,206 @@ export async function POST(req: NextRequest) {
     );
   }
 
-  const variants: { base64: string; mimeType: string }[] = [];
+  // -------------------------------------------------------------------------
+  // Self-correcting generation: every candidate is re-scored (median of 3)
+  // BEFORE delivery, and a candidate that lands below the original's score
+  // gets one corrective retry with the reviewer's verdict fed back into the
+  // prompt. A re-score costs ~1/40th of an image generation, so catching a
+  // loser server-side and retrying once is far cheaper than eating the
+  // refund: one converted retry pays for itself roughly 20x.
+  // -------------------------------------------------------------------------
+  const baseline = typeof body.assetScore === "number" ? body.assetScore : null;
+  const MIN_VISIBLE_DIFF = 7; // near-copies score <5 on 0-255; real edits score 10+
+  const MAX_IMAGE_CALLS_PER_SLOT = 3; // hard spend cap per designer slot
+
+  type ScoredVariant = {
+    base64: string;
+    mimeType: string;
+    score?: number;
+    scoreSummary?: string;
+    charged: boolean;
+  };
+
   let hardError: string | null = null;
 
-  // Every visual asset gets one deterministic, guaranteed-visible fix as
-  // Variant 1 (icons: square saliency crop; capsules/feature graphics:
-  // aspect-preserving saliency crop). Screenshots are excluded because
-  // cropping risks cutting gameplay UI. Remaining slots go to the Gemini
-  // designer pass behind a visible-difference gate.
-  if (assetType !== "screenshot" && requested > 0) {
+  const scoreCandidate = (candidate: { base64: string; mimeType: string }) =>
+    rescoreSingleAsset({
+      base64: candidate.base64,
+      mimeType: candidate.mimeType,
+      assetType,
+      platform,
+      apiKey,
+    });
+
+  const finishVariant = (
+    candidate: { base64: string; mimeType: string },
+    result: { score: number; summaryLine: string } | null
+  ): ScoredVariant => ({
+    base64: candidate.base64,
+    mimeType: candidate.mimeType,
+    score: result?.score,
+    scoreSummary: result?.summaryLine,
+    charged: !(
+      baseline !== null &&
+      typeof result?.score === "number" &&
+      result.score < baseline
+    ),
+  });
+
+  // Deterministic pass (icons: square saliency crop; capsules/feature
+  // graphics: aspect-preserving crop). Screenshots are excluded because
+  // cropping risks cutting gameplay UI. If the controlled crop scores below
+  // the original, escalate to the "strong" crop - sharp-only, zero API cost -
+  // and keep whichever scores higher.
+  const buildDeterministicVariant = async (): Promise<ScoredVariant | null> => {
     try {
-      const polished =
+      const make = (mode: "controlled" | "strong") =>
         assetType === "icon"
-          ? await makeDeterministicIconPolish(buffer, "controlled")
-          : await makeDeterministicWidePolish(buffer, "controlled");
-      variants.push({ base64: polished.base64, mimeType: polished.mimeType });
+          ? makeDeterministicIconPolish(buffer, mode)
+          : makeDeterministicWidePolish(buffer, mode);
+
+      const first = await make("controlled");
+      const firstResult = await scoreCandidate(first);
+      let best = { candidate: first, result: firstResult };
+
+      if (baseline !== null && firstResult && firstResult.score < baseline) {
+        const second = await make("strong").catch(() => null);
+        if (second) {
+          const secondResult = await scoreCandidate(second);
+          if (secondResult && secondResult.score > firstResult.score) {
+            best = { candidate: second, result: secondResult };
+          }
+        }
+      }
+
+      return finishVariant(best.candidate, best.result);
     } catch (err: unknown) {
       console.error(
         "deterministic polish failed:",
         err instanceof Error ? err.message : "unknown error"
       );
+      return null;
     }
-  }
+  };
 
-  const MIN_VISIBLE_DIFF = 7; // near-copies score <5 on 0-255; real edits score 10+
+  // Gemini designer pass: near-copy gate first, then a score-gated corrective
+  // retry that feeds the reviewer's verdict back into the prompt. The better
+  // of the two attempts is delivered.
+  const buildDesignerVariant = async (
+    variantIndex: number
+  ): Promise<ScoredVariant | null> => {
+    let imageCalls = 0;
 
-  for (let i = variants.length; i < requested; i++) {
+    const generate = (extraInstruction?: string) => {
+      imageCalls++;
+      return fixAsset(
+        {
+          assetType,
+          platform,
+          imageBase64,
+          mimeType: sniffedMime,
+          iconReadTestBase64: iconReadTest?.base64,
+          iconReadTestMimeType: iconReadTest?.mimeType,
+          analysisNotes: body.analysisNotes,
+          userInstruction: [body.userInstruction, extraInstruction]
+            .filter(Boolean)
+            .join(" "),
+          variantIndex,
+          assetScore: baseline ?? undefined,
+        },
+        apiKey
+      );
+    };
+
     try {
+      // Near-copy gate with one escalation retry.
       let output: { base64: string; mimeType: string } | null = null;
-      // Visible-difference gate with one escalation retry: a near-copy is a
-      // failed result, never delivered, never charged.
-      for (let attempt = 0; attempt < 2 && !output; attempt++) {
-        const candidate = await fixAsset(
-          {
-            assetType,
-            platform,
-            imageBase64,
-            mimeType: sniffedMime,
-            iconReadTestBase64: iconReadTest?.base64,
-            iconReadTestMimeType: iconReadTest?.mimeType,
-            analysisNotes: body.analysisNotes,
-            userInstruction:
-              attempt === 0
-                ? body.userInstruction
-                : [
-                    body.userInstruction,
-                    "PREVIOUS ATTEMPT FAILED: the output was a near-copy of the input. Apply every mandatory edit dramatically; the result must be unmistakably different at a glance.",
-                  ]
-                    .filter(Boolean)
-                    .join(" "),
-            variantIndex: i,
-            assetScore: typeof body.assetScore === "number" ? body.assetScore : undefined,
-          },
-          apiKey
+      for (
+        let attempt = 0;
+        attempt < 2 && !output && imageCalls < MAX_IMAGE_CALLS_PER_SLOT;
+        attempt++
+      ) {
+        const candidate = await generate(
+          attempt === 0
+            ? undefined
+            : "PREVIOUS ATTEMPT FAILED: the output was a near-copy of the input. Apply every mandatory edit dramatically; the result must be unmistakably different at a glance."
         );
         const diff = await visibleDifferenceScore(buffer, candidate.base64).catch(() => 99);
         if (diff >= MIN_VISIBLE_DIFF) {
           output = candidate;
         } else {
           console.warn(
-            `variant ${i} attempt ${attempt} near-copy (diff=${diff.toFixed(1)}), ${attempt === 0 ? "retrying with escalation" : "dropping for refund"}`
+            `variant ${variantIndex} attempt ${attempt} near-copy (diff=${diff.toFixed(1)}), ${attempt === 0 ? "retrying with escalation" : "dropping for refund"}`
           );
         }
       }
-      if (output) {
-        variants.push(output);
+      if (!output) return null;
+
+      let result = await scoreCandidate(output);
+
+      // Score-gated corrective retry: tell the model exactly why the reviewer
+      // rejected the first attempt, then keep whichever attempt scores higher.
+      // Only fires on a CLEAR miss (10+ points below the original): a 5-point
+      // gap sits inside re-score noise, where a retry is likely wasted image
+      // spend - the refund logic handles those borderline cases instead.
+      const RETRY_MISS_THRESHOLD = 10;
+      if (
+        baseline !== null &&
+        result &&
+        baseline - result.score >= RETRY_MISS_THRESHOLD &&
+        imageCalls < MAX_IMAGE_CALLS_PER_SLOT
+      ) {
+        try {
+          const retry = await generate(
+            `PREVIOUS ATTEMPT REJECTED: an independent reviewer re-scored it ${result.score}/100, below the original's ${baseline}/100. Reviewer verdict: "${result.summaryLine}". Correct course now: remove every added effect (no glow, beams, flares, particles, haze), enlarge the focal subject harder, simplify the background further, and cut anything that fails at 32px. The output must beat ${baseline}/100.`
+          );
+          const retryDiff = await visibleDifferenceScore(buffer, retry.base64).catch(() => 99);
+          if (retryDiff >= MIN_VISIBLE_DIFF) {
+            const retryResult = await scoreCandidate(retry);
+            if (retryResult && retryResult.score > result.score) {
+              output = retry;
+              result = retryResult;
+            }
+          }
+        } catch (err: unknown) {
+          console.error(
+            "score-gated retry failed:",
+            err instanceof Error ? err.message : "unknown error"
+          );
+        }
       }
+
+      return finishVariant(output, result);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : "Generation failed";
       console.error("fix variant error:", message);
       if (typeof err === "object" && err !== null && "code" in err && err.code === "GUARDRAIL") {
         hardError = message;
-        break;
       }
+      return null;
     }
+  };
+
+  // Run the deterministic and designer pipelines concurrently; each already
+  // carries its own score, so total latency stays close to the slowest
+  // single pipeline instead of the sum.
+  const pipelines: Promise<ScoredVariant | null>[] = [];
+  if (assetType !== "screenshot" && requested > 0) {
+    pipelines.push(buildDeterministicVariant());
+  }
+  for (let i = pipelines.length; i < requested; i++) {
+    pipelines.push(buildDesignerVariant(i));
   }
 
+  const settled = await Promise.all(pipelines);
+  const variants = settled.filter((v): v is ScoredVariant => v !== null);
+
   const delivered = variants.length;
-  const refunded = requested - delivered;
-  if (refunded > 0) {
-    await credits.refund(key, refunded);
+  const failureRefunds = requested - delivered;
+  const scoreRefunds = variants.filter((v) => !v.charged).length;
+  const totalRefunds = failureRefunds + scoreRefunds;
+  if (totalRefunds > 0) {
+    await credits.refund(key, totalRefunds);
   }
 
   const remaining = await credits.getBalance(key);
@@ -275,7 +398,11 @@ export async function POST(req: NextRequest) {
 
   return NextResponse.json({
     variants,
-    credits: { charged: delivered, refunded, remaining },
+    credits: {
+      charged: delivered - scoreRefunds,
+      refunded: totalRefunds,
+      remaining,
+    },
   });
 }
 

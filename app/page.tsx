@@ -5,6 +5,7 @@ import Link from "next/link";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { SiteNav } from "@/app/components/SiteChrome";
 import GenerateVariants, { type GenerateSource } from "@/app/components/GenerateVariants";
+import ShelfSimulator from "@/app/components/ShelfSimulator";
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2 MB
 const MAX_SCREENSHOTS = 3;
@@ -141,6 +142,8 @@ type EditPlan = {
 type AnalyzePayload = {
   error?: string;
   verdict?: string;
+  reportId?: string;
+  specNotes?: string[];
   calculated?: {
     launchScore?: number;
     potentialAfterFixes?: number;
@@ -364,6 +367,8 @@ function parsePayload(raw: string): AnalyzePayload | null {
   return {
     error: str(parsed.error),
     verdict: str(parsed.verdict),
+    reportId: str(parsed.reportId),
+    specNotes: strList(parsed.specNotes),
     calculated: c,
     shelf,
     click,
@@ -647,6 +652,56 @@ function ChecklistCols({
   );
 }
 
+function ShareReportBar({ reportId }: { reportId: string }) {
+  const [copied, setCopied] = useState(false);
+  const shareUrl =
+    typeof window !== "undefined" ? `${window.location.origin}/report/${reportId}` : `/report/${reportId}`;
+
+  const copy = async () => {
+    try {
+      await navigator.clipboard.writeText(shareUrl);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2200);
+    } catch {
+      // Clipboard can be unavailable; the visible link below still works.
+    }
+  };
+
+  return (
+    <div
+      className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-[rgba(24,224,255,.28)] px-5 py-3.5"
+      style={{ background: "linear-gradient(160deg,rgba(15,22,42,.96),rgba(8,9,18,.96))" }}
+    >
+      <div className="min-w-0">
+        <span className="font-brand block text-[13px] font-bold text-[var(--foreground)]">
+          This report has a permanent link
+        </span>
+        <span className="block truncate text-[12px] font-semibold text-[var(--faint)]">
+          Send it to your team, your artist, or your community - no login needed.
+        </span>
+      </div>
+      <div className="flex items-center gap-2">
+        <a
+          href={`/report/${reportId}`}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="rounded-full border border-[var(--edge)] bg-white/[.03] px-4 py-2 text-[12px] font-bold text-[var(--muted)] transition hover:border-[rgba(24,224,255,.4)] hover:text-[var(--cyan)]"
+        >
+          Open
+        </a>
+        <button
+          type="button"
+          onClick={() => void copy()}
+          className="rounded-full px-4 py-2 text-[12px] font-black text-[#05121a] transition hover:-translate-y-0.5 hover:brightness-110"
+          style={{ background: "linear-gradient(120deg,var(--cyan),var(--magenta))" }}
+        >
+          {copied ? "Copied ✓" : "Copy share link"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
 function ReportCard({ title, children }: { title: string; children: React.ReactNode }) {
   return (
     <div
@@ -756,6 +811,8 @@ export default function Home() {
   const [gameplay, setGameplay] = useState<GameplayReads | null>(null);
   const [emotion, setEmotion] = useState<EmotionReads | null>(null);
   const [error, setError] = useState("");
+  const [reportId, setReportId] = useState<string | null>(null);
+  const [specNotes, setSpecNotes] = useState<string[]>([]);
   const [account, setAccount] = useState<AccountStatus | null>(null);
 
   const refreshAccount = useCallback(async () => {
@@ -933,6 +990,8 @@ export default function Home() {
     setClick(null);
     setGameplay(null);
     setEmotion(null);
+    setReportId(null);
+    setSpecNotes([]);
 
     try {
       const res = await fetch("/api/analyze", { method: "POST", body: fd });
@@ -966,6 +1025,8 @@ export default function Home() {
       setClick(data.click ?? null);
       setGameplay(data.gameplay ?? null);
       setEmotion(data.emotion ?? null);
+      setReportId(data.reportId ?? null);
+      setSpecNotes(data.specNotes ?? []);
     } catch {
       setError("Could not reach the analyzer. Check your connection and try again.");
     } finally {
@@ -995,6 +1056,8 @@ export default function Home() {
     setClick(null);
     setGameplay(null);
     setEmotion(null);
+    setReportId(null);
+    setSpecNotes([]);
     setError("");
   }
 
@@ -1077,7 +1140,7 @@ export default function Home() {
 
       {!hasResult && !loading && (
       <>
-        {/* HERO — the upload is the product */}
+        {/* HERO - the upload is the product */}
         <section
           className="relative mx-auto mt-10 w-full max-w-[780px] overflow-hidden rounded-3xl border border-[rgba(24,224,255,.24)] p-6 md:p-9"
           style={{ background: "linear-gradient(160deg,rgba(18,18,34,.97),rgba(7,8,18,.97))" }}
@@ -1098,10 +1161,25 @@ export default function Home() {
             <h2 className="font-brand text-center text-[clamp(24px,3.4vw,32px)] font-semibold">
               Upload store assets
             </h2>
-            <p className="mx-auto mb-6 mt-2 max-w-[52ch] text-center text-[15px] font-medium leading-6 text-[var(--text-2)]">
+            <p className="mx-auto mt-2 max-w-[52ch] text-center text-[15px] font-medium leading-6 text-[var(--text-2)]">
               Drop your icon, screenshots or Steam capsule to get a scored conversion readout in
               seconds.
             </p>
+
+            {/* the whole self-serve journey, spelled out before the first click */}
+            <div className="mx-auto mb-6 mt-4 flex flex-wrap items-center justify-center gap-x-1.5 gap-y-2">
+              {["Upload assets", "Get scored review", "Generate fixes"].map((step, i) => (
+                <span key={step} className="flex items-center gap-1.5">
+                  <span className="flex items-center gap-1.5 rounded-full border border-[var(--edge)] bg-white/[.03] px-3 py-1.5 text-[11.5px] font-bold text-[var(--muted)]">
+                    <span className="flex h-4.5 w-4.5 flex-none items-center justify-center rounded-full bg-[rgba(24,224,255,.14)] text-[10px] font-black text-[var(--cyan)]">
+                      {i + 1}
+                    </span>
+                    {step}
+                  </span>
+                  {i < 2 && <span className="text-[11px] font-bold text-[var(--faint)]">→</span>}
+                </span>
+              ))}
+            </div>
 
             {/* dropzone */}
             <label
@@ -1151,8 +1229,8 @@ export default function Home() {
                     ? a.error
                     : a.overflow
                     ? a.role === "screenshot"
-                      ? "Extra screenshot — max 3"
-                      : "Extra creative — max 3"
+                      ? "Extra screenshot - max 3"
+                      : "Extra creative - max 3"
                     : `${a.w}×${a.h} · ${formatSize(a.file.size)}`;
                   return (
                     <div
@@ -1222,7 +1300,7 @@ export default function Home() {
           </div>
         </section>
 
-        {/* SAMPLE — what a finished readout returns */}
+        {/* SAMPLE - what a finished readout returns */}
         <section className="mx-auto mt-12 w-full max-w-[880px]" aria-label="Sample readout">
           <div
             className="relative rounded-2xl border border-[rgba(24,224,255,.28)] p-5 md:p-6"
@@ -1295,7 +1373,7 @@ export default function Home() {
       </>
       )}
 
-      {/* loading — replaces the whole panel */}
+      {/* loading - replaces the whole panel */}
       {loading && (
         <div className="mt-10">
           <AnalyzingPanel />
@@ -1318,7 +1396,7 @@ export default function Home() {
             </span>
           </button>
 
-          {/* HERO — review noun + score + ship decision + why */}
+          {/* HERO - review noun + score + ship decision + why */}
           <div
             className="relative overflow-hidden rounded-2xl border p-7 md:p-9"
             style={{
@@ -1371,9 +1449,24 @@ export default function Home() {
                 {summaryLine}
               </p>
             )}
+            {specNotes.length > 0 && (
+              <div className="mt-4 flex flex-col gap-1.5">
+                {specNotes.map((note, i) => (
+                  <p
+                    key={`${i}-${note.slice(0, 20)}`}
+                    className="rounded-lg border border-[rgba(255,194,61,.3)] bg-[rgba(255,194,61,.06)] px-3 py-2 text-[12.5px] font-semibold text-[#e8cf9a]"
+                  >
+                    ⚠ {note}
+                  </p>
+                ))}
+              </div>
+            )}
           </div>
 
-          {/* 32PX STORE TEST — strongest feature, directly under the verdict (icon only) */}
+          {/* shareable permalink - persisted server-side, safe to send around */}
+          {reportId && <ShareReportBar reportId={reportId} />}
+
+          {/* 32PX STORE TEST - strongest feature, directly under the verdict (icon only) */}
           {previewAsset && (
             <ReportCard title="32px store test">
               <ShelfPreview asset={previewAsset} shelf={shelf} />
@@ -1383,7 +1476,14 @@ export default function Home() {
             </ReportCard>
           )}
 
-          {/* WHY IT SCORED THIS — 3 strengths / 3 weaknesses, no essay */}
+          {/* STORE SHELF SIMULATOR - the icon in context, next to competitors */}
+          {previewAsset && (
+            <ReportCard title="Store shelf simulator">
+              <ShelfSimulator iconUrl={previewAsset.url} />
+            </ReportCard>
+          )}
+
+          {/* WHY IT SCORED THIS - 3 strengths / 3 weaknesses, no essay */}
           {(strengths.length > 0 || weaknesses.length > 0) && (
             <ReportCard title="Why it scored this">
               <ChecklistCols
@@ -1395,7 +1495,7 @@ export default function Home() {
             </ReportCard>
           )}
 
-          {/* WILL PEOPLE CLICK — compact risk line */}
+          {/* WILL PEOPLE CLICK - compact risk line */}
           {risk && (
             <div
               className="rounded-2xl border border-[var(--edge)] p-6"
@@ -1446,7 +1546,7 @@ export default function Home() {
                 Top {topFixes.length} action{topFixes.length === 1 ? "" : "s"}
               </h2>
               <p className="mb-5 mt-1.5 text-sm font-semibold text-[var(--muted)]">
-                Ranked by impact — start at the top.
+                Ranked by impact - start at the top.
               </p>
               <div className="flex flex-col gap-3">
                 {topFixes.map((fix, i) => (
@@ -1475,10 +1575,29 @@ export default function Home() {
                   </div>
                 ))}
               </div>
+              {revisionBrief && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    document
+                      .getElementById("dpx-generate")
+                      ?.scrollIntoView({ behavior: "smooth", block: "start" })
+                  }
+                  className="font-brand mt-5 inline-flex min-h-[50px] w-full items-center justify-center gap-2 rounded-2xl text-[14px] font-black text-[#0a1405] transition hover:-translate-y-0.5 hover:brightness-110 sm:w-auto sm:px-8"
+                  style={{
+                    background: "linear-gradient(120deg,var(--green),#3ddc84)",
+                    boxShadow: "0 0 24px rgba(105,255,0,.22)",
+                  }}
+                >
+                  Apply these fixes - generate improved versions
+                  <span aria-hidden="true">↓</span>
+                </button>
+              )}
             </div>
           )}
 
           {revisionBrief && (
+            <div id="dpx-generate" style={{ scrollMarginTop: 16 }}>
             <ReportCard title="Dragon Pixel edit plan">
               <div className="rounded-xl border border-[var(--edge)] bg-black/25 p-4">
                 {revisionBriefLines.map((line, index) => (
@@ -1512,9 +1631,10 @@ export default function Home() {
                 assetScore={score}
               />
             </ReportCard>
+            </div>
           )}
 
-          {/* ADVANCED ANALYSIS — everything detailed, collapsed */}
+          {/* ADVANCED ANALYSIS - everything detailed, collapsed */}
           <details
             className="dpx-details dpx-details-pulse group rounded-2xl border border-[var(--edge)]"
             style={{ background: "linear-gradient(160deg,#11182a,#070b14)" }}
@@ -1536,7 +1656,7 @@ export default function Home() {
             </summary>
 
             <div className="flex flex-col gap-7 border-t border-[var(--edge)] px-6 py-6">
-              {/* category bars — weakest first */}
+              {/* category bars - weakest first */}
               {orderedBars.length > 0 && (
                 <div>
                   <div className="mb-4 text-[11px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
@@ -1573,7 +1693,7 @@ export default function Home() {
                             className="font-brand w-[42px] flex-none text-right text-[13px] font-bold"
                             style={{ color: row.assessed && v != null ? scoreColor(v) : "var(--faint)" }}
                           >
-                            {row.assessed && v != null ? v : "—"}
+                            {row.assessed && v != null ? v : "-"}
                           </span>
                         </div>
                       );
@@ -1591,7 +1711,7 @@ export default function Home() {
                   click.blockers.length > 0) && (
                   <div>
                     <div className="mb-3 text-[11px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
-                      Click pull — what pulls the tap
+                      Click pull - what pulls the tap
                     </div>
                     <ChipGroup label="Curiosity" items={click.curiosity} tone="cyan" />
                     <ChipGroup label="Reward" items={click.reward} tone="green" />
@@ -1600,12 +1720,12 @@ export default function Home() {
                   </div>
                 )}
 
-              {/* gameplay clarity — only a real read when screenshots were provided */}
+              {/* gameplay clarity - only a real read when screenshots were provided */}
               {gameplayAssessed ? (
                 (gameplay?.clear.length || gameplay?.unclear.length) ? (
                   <div>
                     <div className="mb-3 text-[11px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
-                      Gameplay clarity — reads in 3 seconds?
+                      Gameplay clarity - reads in 3 seconds?
                     </div>
                     <ChecklistCols
                       good={gameplay?.clear ?? []}
@@ -1626,7 +1746,7 @@ export default function Home() {
                     </span>
                     <p className="mt-1.5 text-[13.5px] font-semibold leading-snug text-[var(--muted)]">
                       Gameplay clarity needs in-game screenshots. Upload them to evaluate objective,
-                      player action, reward, and failure state — the icon alone only shows visual style.
+                      player action, reward, and failure state - the icon alone only shows visual style.
                     </p>
                   </div>
                 </div>
@@ -1649,7 +1769,7 @@ export default function Home() {
             </div>
           </details>
 
-          {/* paid offer — self-serve AI fixes; hidden for active subscribers */}
+          {/* paid offer - self-serve AI fixes; hidden for active subscribers */}
           {isPaidSubscriber && (
             <div className="rounded-2xl border border-[rgba(105,255,0,.26)] bg-[rgba(105,255,0,.055)] p-4">
               <div className="dpx-kicker" data-tone="cyan">

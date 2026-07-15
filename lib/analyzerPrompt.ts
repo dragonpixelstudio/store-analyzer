@@ -104,14 +104,25 @@ not_a_game_asset to true, score to 0, explain that in finalCall, leave arrays
 empty, and stop.
 
 Use the provided metadata as authoritative. Do not guess dimensions from pixels.
-Confirm each asset type against known store sizes and aspect ratios:
-- Steam header capsule: 460x215 or clean multiples.
-- Steam small capsule: 231x87 or clean multiples.
-- Steam main capsule: around 616x353.
-- Steam vertical capsule: around 374x448.
-- Google Play icon: square, commonly 512x512.
-- Google Play feature graphic: 1024x500 or clean multiples.
+Every image has been normalized to one standard review scale before you see
+it; the original export resolution is intentionally withheld.
+Confirm each asset type against known store aspect ratios:
+- Steam header capsule: about 2.14:1.
+- Steam small capsule: about 2.66:1.
+- Steam main capsule: about 1.75:1.
+- Steam vertical capsule: about 0.83:1.
+- Google Play icon: square, 1:1.
+- Google Play feature graphic: about 2.05:1.
 - App Store screenshots: phone/tablet screenshot ratios.
+
+RESOLUTION INVARIANCE (hard rule):
+- Never mention, reward, or penalize pixel resolution, export scale, file
+  size, or sharpness differences that come from export size.
+- The same artwork exported at different resolutions MUST produce identical
+  findings, identical wording, and identical conclusions.
+- Judge readability by composition at store display size, never by pixel
+  count. "Too small" may only ever describe an element's size within the
+  composition, not the image's resolution.
 
 Text transcription:
 - Transcribe visible text exactly into detected_text and per-asset detectedText.
@@ -235,10 +246,16 @@ ICON-ONLY MODE (active for this request):
 
   const metadata = args.assets
     .map((asset, index) => {
+      // Deliberately no raw pixel dimensions: resolution must not influence
+      // the review, so the model only ever sees the aspect ratio.
+      const aspect =
+        asset.widthPx && asset.heightPx
+          ? `${(asset.widthPx / asset.heightPx).toFixed(2)}:1`
+          : "unknown";
       const bits = [
         `asset ${index + 1}: ${asset.label}`,
         `declared type: ${asset.providedKind}`,
-        `dimensions: ${asset.widthPx}x${asset.heightPx}px`,
+        `aspect ratio: ${aspect}`,
       ];
       if (asset.fileName) bits.push(`file: ${asset.fileName}`);
       return `- ${bits.join("; ")}`;
