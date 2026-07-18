@@ -1474,7 +1474,7 @@ export default function Home() {
                     </label>
                     <p className="mt-1 max-w-[52ch] text-[11.5px] font-semibold leading-snug text-[var(--muted)]">
                       Confirm this when the icon cannot reveal the mechanic.
-                      It changes reference selection only—not the analysis score.
+                      It only changes reference selection and not the analysis score.
                     </p>
                   </div>
                   <select
