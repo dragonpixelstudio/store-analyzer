@@ -15,6 +15,7 @@ export type BuildAnalyzerPromptArgs = {
   hasIcon: boolean;
   hasScreenshots: boolean;
   hasCreatives: boolean;
+  benchmarkContext?: string;
 };
 
 const CORE_PROMPT = `You are Dragon Pixel Store Analyzer, a self-serve game store asset reviewer.
@@ -95,6 +96,21 @@ OUTPUT SCHEMA:
     "variant_1_mode": "Faithful improvement",
     "variant_2_mode": "Stronger improvement, still same concept"
   },
+  "benchmarkComparisons": [
+    {
+      "assetKind": "icon",
+      "attemptedPattern": "",
+      "nearestReferenceIds": [],
+      "sharedPrinciples": [],
+      "importantDifferences": [],
+      "measuredFacts": [],
+      "visualObservations": [],
+      "inferences": [],
+      "recommendation": "",
+      "cropOnlyEnough": true,
+      "confidence": "medium"
+    }
+  ],
   "marketingRiskSummary": "",
   "finalCall": ""
 }
@@ -147,6 +163,12 @@ Type-specific expectations:
 
 Hard rules:
 - Critique only what is visible. Do not invent mechanics or features.
+- Never present an inference as a measurement. Numeric claims may only repeat
+  measurements explicitly supplied by the server.
+- When benchmark images are supplied, compare composition principles only.
+  Do not infer that a benchmark's icon caused its commercial success.
+- Never recommend copying a benchmark's character, emblem, logo, palette, or
+  art style. References inform hierarchy and small-size readability only.
 - Separate craft from conversion: say when an asset is beautiful but weak at selling.
 - Every strength and weakness must name a visible element.
 - Do not default to "add more text". For icons, less text usually wins. If an
@@ -221,14 +243,11 @@ ICON-ONLY MODE (active for this request):
   failure unless the icon also lacks genre or mood signal.
 - Game icons generally do NOT carry the game title. Do not recommend adding
   title text unless the uploaded icon is already a text-led wordmark.
-- Judge the icon against the patterns that top-grossing game icons actually
-  use. Nearly every high-performing game icon commits to ONE of:
-  1. One dominant character or mascot face (Royal Match, Coin Master style).
-  2. One symbolic gameplay object (Candy Crush candy, Subway Surfers character
-     mid-run, Block Blast block).
-  3. One genre-signaling object or threat (weapon, zombie, car, puzzle piece).
-  4. One recognizable brand mark (Roblox, MONOPOLY GO! style).
-  5. One bold action or reward moment (collision, explosion, treasure, danger).
+- Judge the icon against the actual published reference images supplied for
+  this request when they are available. Use generic pattern guidance only as a
+  fallback. Strong icons usually commit to one dominant face/mascot, symbolic
+  gameplay object, genre-signaling threat, recognizable emblem, or bold
+  action/reward moment.
 - Identify WHICH pattern this icon is attempting, say whether it commits to it
   fully, and if it commits to none, that is the top finding.
 - Do not tell the user to copy any named game. Use the patterns to explain what
@@ -274,6 +293,7 @@ ICON-ONLY MODE (active for this request):
       ? `- game context from user: ${args.gameContext.trim()}`
       : "- game context: none provided; infer cautiously from visible evidence only.",
     iconOnlyMode,
+    args.benchmarkContext?.trim() || "",
     "",
     "ASSET METADATA:",
     metadata,

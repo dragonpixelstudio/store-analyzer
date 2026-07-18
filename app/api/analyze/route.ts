@@ -28,11 +28,23 @@ import {
 } from "@/lib/imageNormalize";
 import { identifyAsset, ROLE_LABEL } from "@/lib/storeSpecs";
 import { callerKey, dailyReportPeriod, getCreditStore } from "@/lib/credits";
+import {
+  attachBenchmarkComparison,
+  benchmarkEvidencePrompt,
+  buildBenchmarkEvidence,
+  genreClassifierPrompt,
+  sanitizeGenreClassification,
+  type BenchmarkEvidence,
+} from "@/lib/iconEvidence";
+import {
+  isBenchmarkGenre,
+  type BenchmarkGenre,
+} from "@/lib/benchmarkCatalog";
 import crypto from "node:crypto";
 import { ipRatelimit, globalRatelimit, getClientIp, redis } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
-export const maxDuration = 30;
+export const maxDuration = 60;
 
 const ai = new GoogleGenAI({
   apiKey: process.env.GEMINI_API_KEY!,
@@ -58,6 +70,7 @@ type JsonBody =
       verdict: string;
       reportId?: string;
       specNotes?: string[];
+      benchmarkEvidence?: BenchmarkEvidence[];
     };
 
 function jsonResponse(body: JsonBody, init?: ResponseInit) {
@@ -93,6 +106,12 @@ function platformValue(value: FormDataEntryValue | null): AnalyzerPlatform {
   }
 
   return "unknown";
+}
+
+function genreOverrideValue(
+  value: FormDataEntryValue | null
+): BenchmarkGenre | null {
+  return isBenchmarkGenre(value) ? value : null;
 }
 
 function sniffImageMime(buf: Buffer): string | null {
@@ -212,7 +231,7 @@ type ImagePartResult =
 
 // Bump this whenever prompt/scoring logic changes so stale cached reports
 // are naturally invalidated.
-const ANALYZER_PROMPT_VERSION = "specs-v8-2026-07-15";
+const ANALYZER_PROMPT_VERSION = "evidence-v10-2026-07-18";
 const ANALYSIS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days
 
 function stableHash(value: unknown) {
@@ -225,6 +244,7 @@ function stableHash(value: unknown) {
 function makeAnalysisCacheKey(args: {
   platform: AnalyzerPlatform;
   gameContext: string;
+  genreOverride: BenchmarkGenre | null;
   reviewMode: ReviewMode;
   assets: {
     kind: AnalyzerAssetMeta["providedKind"];
@@ -442,6 +462,9 @@ export async function POST(req: Request) {
 
     const platform = platformValue(formData.get("platform"));
     const gameContext = stringValue(formData.get("gameContext")) || "";
+    const genreOverride = genreOverrideValue(
+      formData.get("benchmarkGenre")
+    );
 
     const assetMetas: AnalyzerAssetMeta[] = [];
     const assetSigs: string[] = [];
@@ -532,7 +555,8 @@ export async function POST(req: Request) {
     const persistReport = async (
       observations: Observations,
       calculated: CalculatedReport,
-      verdict: string
+      verdict: string,
+      benchmarkEvidence?: BenchmarkEvidence[]
     ): Promise<string | undefined> => {
       const reportAssets: StoredReportAsset[] = await Promise.all(
         assetMetas.map(async (meta, i) => ({
@@ -549,6 +573,7 @@ export async function POST(req: Request) {
         calculated,
         observations,
         assets: reportAssets,
+        benchmarkEvidence,
       });
       return id ?? undefined;
     };
@@ -563,6 +588,7 @@ export async function POST(req: Request) {
     const cacheKey = makeAnalysisCacheKey({
       platform,
       gameContext: gameContext.trim(),
+      genreOverride,
       reviewMode,
       assets: assetMetas.map((meta, i) => ({
         kind: meta.providedKind,
@@ -584,6 +610,7 @@ export async function POST(req: Request) {
     const bucketKey = `dpx:psigidx:${ANALYZER_PROMPT_VERSION}:${stableHash({
       platform,
       gameContext: gameContext.trim(),
+      genreOverride,
       reviewMode,
       assets: assetMetas.map((meta) => ({
         kind: meta.providedKind,
@@ -640,24 +667,11 @@ export async function POST(req: Request) {
       const reportId = await persistReport(
         cachedBody.observations,
         cachedBody.calculated,
-        cachedBody.verdict
+        cachedBody.verdict,
+        cachedBody.benchmarkEvidence
       );
       return jsonResponse({ ...cachedBody, reportId, specNotes });
     }
-
-    const parts: Part[] = [
-      {
-        text: buildAnalyzerPrompt({
-          assets: assetMetas,
-          platform,
-          gameContext,
-          hasIcon: Boolean(icon),
-          hasScreenshots: screenshots.length > 0,
-          hasCreatives: creatives.length > 0,
-        }),
-      },
-      ...imageParts,
-    ];
 
     const global = await globalRatelimit.limit("global");
     if (!global.success) {
@@ -694,6 +708,122 @@ export async function POST(req: Request) {
         { status: 429 }
       );
     }
+
+    let genre = sanitizeGenreClassification({});
+    try {
+      const representativeParts = imageParts.slice(0, 2);
+      const genreResponse = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [
+          {
+            role: "user",
+            parts: [
+              { text: genreClassifierPrompt(gameContext) },
+              ...representativeParts,
+            ],
+          },
+        ],
+        config: {
+          temperature: 0,
+          topP: 0.1,
+          topK: 1,
+          candidateCount: 1,
+          responseMimeType: "application/json",
+        },
+      });
+      genre = sanitizeGenreClassification(
+        parseAnalyzerReply(genreResponse.text || "{}")
+      );
+    } catch (err) {
+      console.error(
+        "benchmark genre classification failed:",
+        err instanceof Error ? err.message : "unknown error"
+      );
+    }
+    if (genreOverride) {
+      genre = {
+        ...genre,
+        primary: genreOverride,
+        secondary: genre.secondary.filter(
+          (candidate) => candidate !== genreOverride
+        ),
+        confidence: "high",
+        selectionSource: "user-confirmed",
+        visibleSignals: [
+          `User confirmed ${genreOverride} for benchmark selection.`,
+          ...genre.visibleSignals,
+        ].slice(0, 5),
+      };
+    }
+
+    const benchmarkTargets: Array<{
+      userAsset: Buffer;
+      assetKind: "icon" | "screenshot";
+    }> = [];
+    if (icon && assetBuffers[0]) {
+      benchmarkTargets.push({ userAsset: assetBuffers[0], assetKind: "icon" });
+    }
+    const firstScreenshotIndex = icon ? 1 : 0;
+    if (screenshots.length > 0 && assetBuffers[firstScreenshotIndex]) {
+      benchmarkTargets.push({
+        userAsset: assetBuffers[firstScreenshotIndex],
+        assetKind: "screenshot",
+      });
+    }
+
+    const benchmarkRuns = (
+      await Promise.all(
+        benchmarkTargets.map((target) =>
+          buildBenchmarkEvidence({
+            ...target,
+            platform,
+            genre,
+          }).catch((err) => {
+            console.error(
+              `benchmark ${target.assetKind} evidence failed:`,
+              err instanceof Error ? err.message : "unknown error"
+            );
+            return null;
+          })
+        )
+      )
+    ).filter(
+      (
+        item
+      ): item is Awaited<ReturnType<typeof buildBenchmarkEvidence>> =>
+        item !== null
+    );
+    const initialBenchmarkEvidence = benchmarkRuns.map((run) => run.evidence);
+    const benchmarkParts: Part[] = benchmarkRuns.flatMap((run) =>
+      run.imageParts.flatMap((item) => [
+        {
+          text: `PUBLISHED BENCHMARK ${item.reference.id}: ${item.reference.title}; platform ${item.reference.platform}; asset type ${item.reference.assetKind}; role ${item.reference.role}; matched genres ${item.reference.matchedGenres.join(", ") || "none"}; pattern ${item.reference.pattern}.`,
+        },
+        {
+          inlineData: {
+            mimeType: item.mimeType,
+            data: item.base64,
+          },
+        },
+      ])
+    );
+    const parts: Part[] = [
+      {
+        text: buildAnalyzerPrompt({
+          assets: assetMetas,
+          platform,
+          gameContext,
+          hasIcon: Boolean(icon),
+          hasScreenshots: screenshots.length > 0,
+          hasCreatives: creatives.length > 0,
+          benchmarkContext: initialBenchmarkEvidence
+            .map(benchmarkEvidencePrompt)
+            .join("\n\n"),
+        }),
+      },
+      ...imageParts,
+      ...benchmarkParts,
+    ];
 
     const response = await ai.models.generateContent({
       model: "gemini-2.5-flash",
@@ -734,6 +864,22 @@ export async function POST(req: Request) {
       );
     }
 
+    const benchmarkComparisons =
+      observations.benchmarkComparisons ||
+      (observations.benchmarkComparison
+        ? [observations.benchmarkComparison]
+        : []);
+    const benchmarkEvidence = initialBenchmarkEvidence.map((evidence) =>
+      attachBenchmarkComparison(
+        evidence,
+        benchmarkComparisons.find(
+          (comparison) => comparison.assetKind === evidence.assetKind
+        ) ||
+          (initialBenchmarkEvidence.length === 1
+            ? benchmarkComparisons[0]
+            : undefined)
+      )
+    );
     const calculated = calculateDragonPixelScores(observations, reviewMode, {
       hasIcon: Boolean(icon),
       hasScreens: screenshots.length > 0,
@@ -745,6 +891,7 @@ export async function POST(req: Request) {
       observations,
       calculated,
       verdict,
+      benchmarkEvidence,
       ...clientReadout(observations),
     };
 
@@ -761,7 +908,12 @@ export async function POST(req: Request) {
         console.error("psig index write failed", err);
       });
 
-    const reportId = await persistReport(observations, calculated, verdict);
+    const reportId = await persistReport(
+      observations,
+      calculated,
+      verdict,
+      benchmarkEvidence
+    );
 
     return jsonResponse({ ...payload, reportId, specNotes });
   } catch (err: unknown) {

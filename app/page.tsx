@@ -9,6 +9,15 @@ import ShelfSimulator, {
   ScreenshotCarousel,
   SteamCapsuleShelf,
 } from "@/app/components/ShelfSimulator";
+import BenchmarkDossier, {
+  referenceRoleLabel,
+  type BenchmarkEvidence,
+} from "@/app/components/BenchmarkDossier";
+import {
+  BENCHMARK_GENRES,
+  type BenchmarkGenre,
+  type BenchmarkReferenceRole,
+} from "@/lib/benchmarkCatalog";
 import { identifyAsset, inferPlatform } from "@/lib/storeSpecs";
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2 MB
@@ -143,11 +152,30 @@ type EditPlan = {
   variant2Mode?: string;
 };
 
+type BenchmarkGenreChoice = "auto" | BenchmarkGenre;
+
+const GENRE_LABELS: Record<BenchmarkGenre, string> = {
+  action: "Action",
+  survivor: "Survivor / bullet heaven",
+  roguelite: "Roguelite",
+  shooter: "Shooter",
+  platformer: "Platformer",
+  rpg: "RPG",
+  puzzle: "Puzzle",
+  strategy: "Strategy",
+  simulation: "Simulation",
+  racing: "Racing",
+  sports: "Sports",
+  horror: "Horror",
+  casual: "Casual",
+};
+
 type AnalyzePayload = {
   error?: string;
   verdict?: string;
   reportId?: string;
   specNotes?: string[];
+  benchmarkEvidence?: BenchmarkEvidence[];
   calculated?: {
     launchScore?: number;
     potentialAfterFixes?: number;
@@ -292,6 +320,128 @@ function parseEditPlan(v: unknown): EditPlan | undefined {
   };
 }
 
+function parseBenchmarkEvidence(v: unknown): BenchmarkEvidence[] {
+  if (!Array.isArray(v)) return [];
+  return v
+    .filter(isRecord)
+    .map((item) => {
+      const genre = isRecord(item.genre) ? item.genre : {};
+      const references = Array.isArray(item.references)
+        ? item.references.filter(isRecord).map((ref) => ({
+            id: str(ref.id) || "",
+            title: str(ref.title) || "Published reference",
+            platform: str(ref.platform) || "unknown",
+            assetKind:
+              ref.assetKind === "screenshot"
+                ? ("screenshot" as const)
+                : ("icon" as const),
+            sourceUrl: str(ref.sourceUrl) || "",
+            thumb: str(ref.thumb) || "",
+            pattern: str(ref.pattern) || "",
+            visiblePrinciple: str(ref.visiblePrinciple) || "",
+            matchedGenres: strList(ref.matchedGenres),
+            role:
+              ref.role === "closest-mechanic" ||
+              ref.role === "closest-icon-structure" ||
+              ref.role === "adjacent-shelf-competitor"
+                ? (ref.role as BenchmarkReferenceRole)
+                : ("adjacent-shelf-competitor" as BenchmarkReferenceRole),
+          }))
+        : [];
+      const fetchRaw = isRecord(item.referenceFetch)
+        ? item.referenceFetch
+        : {};
+      const fetchStatus: "complete" | "partial" | "unavailable" =
+        fetchRaw.status === "complete" ||
+        fetchRaw.status === "partial" ||
+        fetchRaw.status === "unavailable"
+          ? fetchRaw.status
+          : references.length > 0
+            ? "complete"
+            : "unavailable";
+      const fetchFailures = Array.isArray(fetchRaw.failures)
+        ? fetchRaw.failures.filter(isRecord).map((failure) => ({
+            id: str(failure.id) || "",
+            title: str(failure.title) || "Published reference",
+            platform: str(failure.platform) || "unknown",
+            reason: str(failure.reason) || "unknown",
+          }))
+        : [];
+      const comparisonRaw = isRecord(item.comparison) ? item.comparison : null;
+      const measurements = Array.isArray(item.measurements)
+        ? item.measurements
+            .filter(isRecord)
+            .map((measurement) => ({
+              sizePx: num(measurement.sizePx) ?? 0,
+              activePixelCoveragePct:
+                num(measurement.activePixelCoveragePct) ?? 0,
+              activeBoundsCoveragePct:
+                num(measurement.activeBoundsCoveragePct) ?? 0,
+              edgeDensityPct: num(measurement.edgeDensityPct) ?? 0,
+            }))
+        : undefined;
+
+      return {
+        platform: str(item.platform) || "unknown",
+        assetKind:
+          item.assetKind === "screenshot"
+            ? ("screenshot" as const)
+            : ("icon" as const),
+        genre: {
+          primary: str(genre.primary) || "unknown",
+          secondary: strList(genre.secondary),
+          confidence: str(genre.confidence) || "low",
+          visibleSignals: strList(genre.visibleSignals),
+          selectionSource:
+            genre.selectionSource === "user-confirmed"
+              ? ("user-confirmed" as const)
+              : ("inferred" as const),
+        },
+        measurementConfidence: str(item.measurementConfidence),
+        measurements,
+        smallSizeRetentionPct: num(item.smallSizeRetentionPct),
+        references,
+        referenceFetch: {
+          requested: num(fetchRaw.requested) ?? references.length,
+          resolved: num(fetchRaw.resolved) ?? references.length,
+          failed: num(fetchRaw.failed) ?? fetchFailures.length,
+          status: fetchStatus,
+          failures: fetchFailures,
+        },
+        comparison: comparisonRaw
+          ? {
+              attemptedPattern: str(comparisonRaw.attemptedPattern),
+              nearestReferenceIds: strList(
+                comparisonRaw.nearestReferenceIds
+              ),
+              sharedPrinciples: strList(comparisonRaw.sharedPrinciples),
+              importantDifferences: strList(
+                comparisonRaw.importantDifferences
+              ),
+              measuredFacts: strList(comparisonRaw.measuredFacts),
+              visualObservations: strList(
+                comparisonRaw.visualObservations
+              ),
+              inferences: strList(comparisonRaw.inferences),
+              recommendation: str(comparisonRaw.recommendation),
+              cropOnlyEnough:
+                typeof comparisonRaw.cropOnlyEnough === "boolean"
+                  ? comparisonRaw.cropOnlyEnough
+                  : undefined,
+              confidence: str(comparisonRaw.confidence),
+            }
+          : undefined,
+        caveats: strList(item.caveats),
+      };
+    })
+    .filter(
+      (item) =>
+        item.references.length > 0 ||
+        item.measurements?.length ||
+        item.referenceFetch?.status === "unavailable"
+    );
+}
+
 function editPlanToText(plan: EditPlan | null): string {
   if (!plan) return "";
 
@@ -373,6 +523,7 @@ function parsePayload(raw: string): AnalyzePayload | null {
     verdict: str(parsed.verdict),
     reportId: str(parsed.reportId),
     specNotes: strList(parsed.specNotes),
+    benchmarkEvidence: parseBenchmarkEvidence(parsed.benchmarkEvidence),
     calculated: c,
     shelf,
     click,
@@ -821,6 +972,9 @@ export default function Home() {
   const [error, setError] = useState("");
   const [reportId, setReportId] = useState<string | null>(null);
   const [specNotes, setSpecNotes] = useState<string[]>([]);
+  const [benchmarkEvidence, setBenchmarkEvidence] = useState<
+    BenchmarkEvidence[]
+  >([]);
   const [account, setAccount] = useState<AccountStatus | null>(null);
 
   const refreshAccount = useCallback(async () => {
@@ -851,6 +1005,8 @@ export default function Home() {
     account?.plan === "indie" ||
     account?.plan === "pro";
   const [dragOver, setDragOver] = useState(false);
+  const [benchmarkGenre, setBenchmarkGenre] =
+    useState<BenchmarkGenreChoice>("auto");
 
   const inputRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
@@ -984,6 +1140,9 @@ export default function Home() {
         ? "steam"
         : inferPlatform(usable.map((a) => ({ widthPx: a.w, heightPx: a.h })));
     if (detectedPlatform) fd.append("platform", detectedPlatform);
+    if (benchmarkGenre !== "auto") {
+      fd.append("benchmarkGenre", benchmarkGenre);
+    }
 
     setLoading(true);
     setError("");
@@ -1007,6 +1166,7 @@ export default function Home() {
     setEmotion(null);
     setReportId(null);
     setSpecNotes([]);
+    setBenchmarkEvidence([]);
 
     try {
       const res = await fetch("/api/analyze", { method: "POST", body: fd });
@@ -1042,6 +1202,7 @@ export default function Home() {
       setEmotion(data.emotion ?? null);
       setReportId(data.reportId ?? null);
       setSpecNotes(data.specNotes ?? []);
+      setBenchmarkEvidence(data.benchmarkEvidence ?? []);
     } catch {
       setError("Could not reach the analyzer. Check your connection and try again.");
     } finally {
@@ -1073,6 +1234,8 @@ export default function Home() {
     setEmotion(null);
     setReportId(null);
     setSpecNotes([]);
+    setBenchmarkEvidence([]);
+    setBenchmarkGenre("auto");
     setError("");
   }
 
@@ -1299,6 +1462,44 @@ export default function Home() {
               </div>
             )}
 
+            {assets.length > 0 && (
+              <div className="mt-4 rounded-xl border border-[var(--edge)] bg-black/20 p-4">
+                <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                  <div>
+                    <label
+                      htmlFor="benchmark-genre"
+                      className="font-brand text-[12px] font-bold uppercase tracking-[.12em] text-[var(--foreground)]"
+                    >
+                      Benchmark genre
+                    </label>
+                    <p className="mt-1 max-w-[52ch] text-[11.5px] font-semibold leading-snug text-[var(--muted)]">
+                      Confirm this when the icon cannot reveal the mechanic.
+                      It changes reference selection only—not the analysis score.
+                    </p>
+                  </div>
+                  <select
+                    id="benchmark-genre"
+                    value={benchmarkGenre}
+                    disabled={loading}
+                    onChange={(event) =>
+                      setBenchmarkGenre(
+                        event.target.value as BenchmarkGenreChoice
+                      )
+                    }
+                    className="min-h-11 min-w-[230px] rounded-xl border border-[rgba(24,224,255,.3)] bg-[#0b1724] px-3 text-[13px] font-bold text-white outline-none transition focus:border-[var(--cyan)] disabled:cursor-not-allowed disabled:opacity-50"
+                    style={{ colorScheme: "dark" }}
+                  >
+                    <option value="auto">Auto-detect from asset</option>
+                    {BENCHMARK_GENRES.map((genre) => (
+                      <option key={genre} value={genre}>
+                        {GENRE_LABELS[genre]}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
             {error && <p className="mt-3 text-sm font-semibold text-[var(--magenta)]">{error}</p>}
 
             <button
@@ -1494,7 +1695,19 @@ export default function Home() {
           {/* STORE CONTEXT - every asset shown where it will actually live */}
           {previewAsset && (
             <ReportCard title="Store shelf simulator">
-              <ShelfSimulator iconUrl={previewAsset.url} />
+              <ShelfSimulator
+                iconUrl={previewAsset.url}
+                references={(
+                  benchmarkEvidence.find(
+                    (evidence) => evidence.assetKind === "icon"
+                  )?.references || []
+                ).map((reference) => ({
+                  title: reference.title,
+                  thumb: reference.thumb,
+                  sourceUrl: reference.sourceUrl,
+                  roleLabel: referenceRoleLabel(reference.role),
+                }))}
+              />
             </ReportCard>
           )}
           {(() => {
@@ -1517,6 +1730,13 @@ export default function Home() {
               </ReportCard>
             ) : null;
           })()}
+
+          {benchmarkEvidence.map((evidence) => (
+            <BenchmarkDossier
+              key={`${evidence.platform}-${evidence.assetKind}`}
+              evidence={evidence}
+            />
+          ))}
 
           {/* WHY IT SCORED THIS - 3 strengths / 3 weaknesses, no essay */}
           {(strengths.length > 0 || weaknesses.length > 0) && (

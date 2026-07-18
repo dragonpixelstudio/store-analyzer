@@ -20,12 +20,28 @@ export type EditPlan = {
   variant2Mode?: string;
 };
 
+export type BenchmarkComparison = {
+  assetKind?: "icon" | "screenshot";
+  attemptedPattern?: string;
+  nearestReferenceIds?: string[];
+  sharedPrinciples?: string[];
+  importantDifferences?: string[];
+  measuredFacts?: string[];
+  visualObservations?: string[];
+  inferences?: string[];
+  recommendation?: string;
+  cropOnlyEnough?: boolean;
+  confidence?: "low" | "medium" | "high";
+};
+
 export type Observations = {
   detectedText?: string;
   modelScore?: number;
   notGameAsset?: boolean;
   revisionBrief?: string;
   editPlan?: EditPlan;
+  benchmarkComparison?: BenchmarkComparison;
+  benchmarkComparisons?: BenchmarkComparison[];
   shelfTest?: {
     visibleElements?: string[];
     lostElements?: string[];
@@ -207,6 +223,49 @@ function editPlanValue(value: unknown): EditPlan | undefined {
   };
 }
 
+function benchmarkComparisonValue(
+  value: unknown
+): BenchmarkComparison | undefined {
+  if (!isRecord(value)) return undefined;
+  const benchmarkConfidence = stringValue(value.confidence);
+  const assetKind = stringValue(value.assetKind) || stringValue(value.asset_kind);
+  return {
+    assetKind:
+      assetKind === "icon" || assetKind === "screenshot"
+        ? assetKind
+        : undefined,
+    attemptedPattern:
+      stringValue(value.attemptedPattern) ||
+      stringValue(value.attempted_pattern),
+    nearestReferenceIds:
+      stringArray(value.nearestReferenceIds) ||
+      stringArray(value.nearest_reference_ids),
+    sharedPrinciples:
+      stringArray(value.sharedPrinciples) ||
+      stringArray(value.shared_principles),
+    importantDifferences:
+      stringArray(value.importantDifferences) ||
+      stringArray(value.important_differences),
+    measuredFacts:
+      stringArray(value.measuredFacts) ||
+      stringArray(value.measured_facts),
+    visualObservations:
+      stringArray(value.visualObservations) ||
+      stringArray(value.visual_observations),
+    inferences: stringArray(value.inferences),
+    recommendation: stringValue(value.recommendation),
+    cropOnlyEnough:
+      booleanValue(value.cropOnlyEnough) ??
+      booleanValue(value.crop_only_enough),
+    confidence:
+      benchmarkConfidence === "low" ||
+      benchmarkConfidence === "medium" ||
+      benchmarkConfidence === "high"
+        ? benchmarkConfidence
+        : undefined,
+  };
+}
+
 export function sanitizeObservations(value: unknown): Observations | null {
   if (!isRecord(value)) return null;
 
@@ -220,6 +279,20 @@ export function sanitizeObservations(value: unknown): Observations | null {
     : {};
   const polish = isRecord(value.polish) ? value.polish : {};
   const consistency = isRecord(value.consistency) ? value.consistency : {};
+  const benchmarkComparison = benchmarkComparisonValue(
+    value.benchmarkComparison || value.benchmark_comparison
+  );
+  const benchmarkComparisons = Array.isArray(value.benchmarkComparisons)
+    ? value.benchmarkComparisons
+        .map(benchmarkComparisonValue)
+        .filter((item): item is BenchmarkComparison => Boolean(item))
+        .slice(0, 3)
+    : Array.isArray(value.benchmark_comparisons)
+      ? value.benchmark_comparisons
+          .map(benchmarkComparisonValue)
+          .filter((item): item is BenchmarkComparison => Boolean(item))
+          .slice(0, 3)
+      : undefined;
 
   return {
     detectedText: stringValue(value.detectedText) || stringValue(value.detected_text),
@@ -228,6 +301,8 @@ export function sanitizeObservations(value: unknown): Observations | null {
     revisionBrief:
       stringValue(value.revisionBrief) || stringValue(value.revision_brief),
     editPlan: editPlanValue(value.editPlan) || editPlanValue(value.edit_plan),
+    benchmarkComparison,
+    benchmarkComparisons,
     shelfTest: {
       visibleElements: stringArray(shelfTest.visibleElements),
       lostElements: stringArray(shelfTest.lostElements),
@@ -496,9 +571,13 @@ function iconSafeFixes(fixes: DragonPixelFix[]): DragonPixelFix[] {
 function iconSafeRevisionBrief(obs: Observations): string {
   const group = iconSubjectGroup(obs);
   const cleanupTargets = iconCleanupTargets(obs);
+  const evidenceRecommendation =
+    obs.benchmarkComparisons?.find((item) => item.assetKind === "icon")
+      ?.recommendation || obs.benchmarkComparison?.recommendation;
 
   const lines = [
     "Keep the same core subjects, same setup idea, same palette family, and the square icon composition.",
+    evidenceRecommendation || "",
     `Enlarge ${group} as one readable group, not just an internal highlight or glow core.`,
     `Crop tighter around ${group}, keeping safe margins.`,
     `Remove small-size noise: ${cleanupTargets}.`,
@@ -513,10 +592,15 @@ function iconEditPlan(obs: Observations): EditPlan {
   const group = iconSubjectGroup(obs);
   const subjects = iconCoreSubjects(obs);
   const cleanupTargets = iconCleanupTargets(obs);
+  const comparison =
+    obs.benchmarkComparisons?.find((item) => item.assetKind === "icon") ||
+    obs.benchmarkComparison;
+  const evidenceEdit = comparison?.recommendation;
+  const needsPurposeBuiltComposition = comparison?.cropOnlyEnough === false;
 
   return {
-    mode: "conservative_polish",
-    editStrength: "clear",
+    mode: needsPurposeBuiltComposition ? "concept_upgrade" : "conservative_polish",
+    editStrength: needsPurposeBuiltComposition ? "strong" : "clear",
     preserve: [
       subjects.length > 0
         ? `Same core subjects: ${joinReadable(subjects)}.`
@@ -526,7 +610,8 @@ function iconEditPlan(obs: Observations): EditPlan {
       "At least 85-90% of the original concept should remain recognizable.",
     ],
     requiredEdits: [
-      `Scale ${group} up as one complete subject group so the focal event occupies roughly 72-80% of the square canvas while keeping safe margins.`,
+      ...(evidenceEdit ? [evidenceEdit] : []),
+      `Scale ${group} up as one complete subject group until it reads clearly at the measured 32px test size, while keeping safe margins and preserving the defining silhouette.`,
       `Tighten the crop around the focal event without changing the same subject relationship.`,
       `Simplify or remove low-value thumbnail noise: ${cleanupTargets}. Keep only 3-5 major readable sparks or accents if sparks are part of the source.`,
       "Shorten and simplify trails by roughly 20-35% when trails compete with the focal read.",
@@ -543,13 +628,16 @@ function iconEditPlan(obs: Observations): EditPlan {
     successChecks: [
       "The edited version reads more clearly at 32px than the original.",
       "The edited version remains obviously the same icon concept.",
+      "The output follows the benchmark-supported composition principle without copying any reference game's art, character, emblem, or palette.",
       "The change is visible immediately, not subtle to the point of irrelevance.",
       "The main event is larger, cleaner, and easier to separate from the background.",
     ],
     variant1Mode:
       "Faithful improvement: preserve layout closely, enlarge the focal event moderately, reduce clutter slightly, and keep most original energy.",
     variant2Mode:
-      "Stronger improvement: tighten crop more, simplify small details more aggressively, reduce trails/sparks harder, and push silhouette clarity while keeping the same concept.",
+      needsPurposeBuiltComposition
+        ? "Purpose-built square composition: rebuild the crop and staging around the same uploaded subject so one recognizable mark dominates; retain only enough secondary detail to communicate the game, and do not copy a benchmark."
+        : "Stronger improvement: tighten crop more, simplify small details more aggressively, reduce trails/sparks harder, and push silhouette clarity while keeping the same concept.",
   };
 }
 

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
+import BenchmarkDossier from "@/app/components/BenchmarkDossier";
 import { SiteNav } from "@/app/components/SiteChrome";
 import { loadReport, type StoredReport } from "@/lib/reportStore";
 
@@ -214,6 +215,13 @@ export default async function SharedReportPage({ params }: { params: Params }) {
             </div>
           </ReportCard>
         )}
+
+        {report.benchmarkEvidence?.map((evidence) => (
+          <BenchmarkDossier
+            key={`${evidence.platform}-${evidence.assetKind}`}
+            evidence={evidence}
+          />
+        ))}
 
         {/* Why it scored this */}
         {(c.strengths.length > 0 || c.weaknesses.length > 0) && (

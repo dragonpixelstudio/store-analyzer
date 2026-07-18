@@ -2,9 +2,9 @@
 
 // Store shelf simulator: renders the user's real icon inside simulated store
 // surfaces - a dark search-results list and a light top-charts grid - between
-// generic competitor tiles, so the "would you tap it?" question is answered
-// visually instead of by a score. Decoy tiles are procedural SVG, not real
-// games, so the shelf communicates context without copying anyone's brand.
+// genre-matched published reference tiles, so the "would you tap it?" question
+// is answered visually instead of by a score. Procedural decoys remain only as
+// an offline fallback when a store does not expose usable reference artwork.
 
 type Decoy = {
   name: string;
@@ -104,7 +104,14 @@ function Stars({ rating, color }: { rating: string; color: string }) {
 
 type RowEntry =
   | { kind: "you"; url: string }
-  | { kind: "decoy"; decoy: Decoy };
+  | { kind: "decoy"; decoy: Decoy }
+  | {
+      kind: "reference";
+      title: string;
+      url: string;
+      sourceUrl: string;
+      roleLabel?: string;
+    };
 
 function SearchRow({
   entry,
@@ -114,6 +121,7 @@ function SearchRow({
   dark: boolean;
 }) {
   const isYou = entry.kind === "you";
+  const isReference = entry.kind === "reference";
   const titleColor = dark ? "#e8ecf4" : "#1c1e24";
   const subColor = dark ? "#8b93a7" : "#6b7280";
   const you = isYou;
@@ -132,11 +140,15 @@ function SearchRow({
           : undefined
       }
     >
-      {isYou ? (
+      {isYou || isReference ? (
         // eslint-disable-next-line @next/next/no-img-element -- user's uploaded icon object URL
         <img
           src={entry.url}
-          alt="Your icon on the shelf"
+          alt={
+            isYou
+              ? "Your icon on the shelf"
+              : `${entry.title} published reference icon`
+          }
           className="h-12 w-12 flex-none rounded-[10px] object-cover"
         />
       ) : (
@@ -144,16 +156,28 @@ function SearchRow({
       )}
       <div className="min-w-0 flex-1">
         <div className="truncate text-[13px] font-semibold" style={{ color: titleColor }}>
-          {isYou ? "Your game" : entry.decoy.name}
+          {isYou
+            ? "Your game"
+            : isReference
+              ? entry.title
+              : entry.decoy.name}
         </div>
         <div className="flex items-center gap-2 text-[11px]" style={{ color: subColor }}>
           {isYou ? (
             <span className="font-semibold">New</span>
+          ) : isReference ? (
+            <span className="font-semibold">Published reference</span>
           ) : (
             <Stars rating={entry.decoy.rating} color={subColor} />
           )}
           <span>·</span>
-          <span>{isYou ? "This is your icon" : "Sample listing"}</span>
+          <span>
+            {isYou
+              ? "This is your icon"
+              : isReference
+                ? entry.roleLabel || "Genre benchmark"
+                : "Sample listing"}
+          </span>
         </div>
       </div>
       <span
@@ -164,7 +188,7 @@ function SearchRow({
             : { background: "#e8f0fe", color: "#1a67d2" }
         }
       >
-        Install
+        {isYou ? "Your icon" : isReference ? "Reference" : "Sample"}
       </span>
     </div>
   );
@@ -172,6 +196,7 @@ function SearchRow({
 
 function GridTile({ entry, rank, dark }: { entry: RowEntry; rank: number; dark: boolean }) {
   const isYou = entry.kind === "you";
+  const isReference = entry.kind === "reference";
   const titleColor = dark ? "#e8ecf4" : "#1c1e24";
   const subColor = dark ? "#8b93a7" : "#6b7280";
   return (
@@ -184,9 +209,17 @@ function GridTile({ entry, rank, dark }: { entry: RowEntry; rank: number; dark: 
             : undefined
         }
       >
-        {isYou ? (
+        {isYou || isReference ? (
           // eslint-disable-next-line @next/next/no-img-element -- user's uploaded icon object URL
-          <img src={entry.url} alt="Your icon in the top charts" className="aspect-square w-full object-cover" />
+          <img
+            src={entry.url}
+            alt={
+              isYou
+                ? "Your icon in the top charts"
+                : `${entry.title} published reference icon`
+            }
+            className="aspect-square w-full object-cover"
+          />
         ) : (
           <DecoyIcon decoy={entry.decoy} className="aspect-square w-full" />
         )}
@@ -197,10 +230,18 @@ function GridTile({ entry, rank, dark }: { entry: RowEntry; rank: number; dark: 
         </span>
         <div className="min-w-0">
           <div className="truncate text-[11px] font-semibold leading-tight" style={{ color: titleColor }}>
-            {isYou ? "Your game" : entry.decoy.name}
+            {isYou
+              ? "Your game"
+              : isReference
+                ? entry.title
+                : entry.decoy.name}
           </div>
           <div className="text-[10px]" style={{ color: subColor }}>
-            {isYou ? "New" : `${entry.decoy.rating} ★`}
+            {isYou
+              ? "New"
+              : isReference
+                ? "Reference"
+                : `${entry.decoy.rating} ★`}
           </div>
         </div>
       </div>
@@ -409,24 +450,51 @@ export function ScreenshotCarousel({ shots }: { shots: string[] }) {
   );
 }
 
-export default function ShelfSimulator({ iconUrl }: { iconUrl: string }) {
-  const rowEntries: RowEntry[] = [
-    { kind: "decoy", decoy: DECOYS[0] },
-    { kind: "you", url: iconUrl },
-    { kind: "decoy", decoy: DECOYS[1] },
-    { kind: "decoy", decoy: DECOYS[2] },
-  ];
+export type ShelfReference = {
+  title: string;
+  thumb: string;
+  sourceUrl: string;
+  roleLabel?: string;
+};
 
-  const gridEntries: RowEntry[] = [
-    { kind: "decoy", decoy: DECOYS[3] },
-    { kind: "decoy", decoy: DECOYS[4] },
-    { kind: "you", url: iconUrl },
-    { kind: "decoy", decoy: DECOYS[5] },
-    { kind: "decoy", decoy: DECOYS[6] },
-    { kind: "decoy", decoy: DECOYS[0] },
-    { kind: "decoy", decoy: DECOYS[2] },
-    { kind: "decoy", decoy: DECOYS[1] },
-  ];
+export default function ShelfSimulator({
+  iconUrl,
+  references = [],
+}: {
+  iconUrl: string;
+  references?: ShelfReference[];
+}) {
+  const realEntries: RowEntry[] = references
+    .filter((reference) => reference.thumb)
+    .map((reference) => ({
+      kind: "reference" as const,
+      title: reference.title,
+      url: reference.thumb,
+      sourceUrl: reference.sourceUrl,
+      roleLabel: reference.roleLabel,
+    }));
+  const fallbackEntries: RowEntry[] = DECOYS.map((decoy) => ({
+    kind: "decoy" as const,
+    decoy,
+  }));
+  const shelfEntries = realEntries.length > 0 ? realEntries : fallbackEntries;
+  const pick = (index: number) =>
+    shelfEntries[index % shelfEntries.length] ||
+    ({ kind: "decoy", decoy: DECOYS[0] } as RowEntry);
+  const yourEntry: RowEntry = { kind: "you", url: iconUrl };
+  const rowEntries: RowEntry[] =
+    realEntries.length > 0
+      ? [realEntries[0], yourEntry, ...realEntries.slice(1)]
+      : [pick(0), yourEntry, pick(1), pick(2)];
+
+  // Published references appear exactly once. Repetition made a three-title
+  // dossier look like an eight-title benchmark and overstated the evidence.
+  const gridEntries: RowEntry[] =
+    realEntries.length > 0
+      ? [realEntries[0], realEntries[1], yourEntry, ...realEntries.slice(2)].filter(
+          (entry): entry is RowEntry => Boolean(entry)
+        )
+      : [pick(0), pick(1), yourEntry, pick(2), pick(3), pick(4), pick(5), pick(6)];
 
   return (
     <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
@@ -436,6 +504,7 @@ export default function ShelfSimulator({ iconUrl }: { iconUrl: string }) {
           Search results · dark theme
         </div>
         <div
+          data-testid="shelf-search"
           className="flex flex-col gap-1 rounded-2xl border border-[var(--edge)] p-2"
           style={{ background: "#131720" }}
         >
@@ -450,7 +519,10 @@ export default function ShelfSimulator({ iconUrl }: { iconUrl: string }) {
         <div className="mb-2 text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--faint)]">
           Top charts · light theme
         </div>
-        <div className="rounded-2xl border border-[var(--edge)] bg-[#fdfdfd] p-3">
+        <div
+          data-testid="shelf-grid"
+          className="rounded-2xl border border-[var(--edge)] bg-[#fdfdfd] p-3"
+        >
           <div className="grid grid-cols-4 gap-3">
             {gridEntries.map((entry, i) => (
               <GridTile key={i} entry={entry} rank={i + 1} dark={false} />
@@ -460,8 +532,9 @@ export default function ShelfSimulator({ iconUrl }: { iconUrl: string }) {
       </div>
 
       <p className="text-[13px] font-semibold italic text-[var(--faint)] lg:col-span-2">
-        Simulated store shelf with sample listings - not real games. If your eye doesn&apos;t
-        stop on your own icon here, a shopper&apos;s won&apos;t either.
+        {realEntries.length > 0
+          ? "Your icon beside the genre-matched published references used by the evidence audit. Reference success does not prove icon causation."
+          : "Simulated store shelf with sample listings. If your eye doesn't stop on your own icon here, a shopper's won't either."}
       </p>
     </div>
   );

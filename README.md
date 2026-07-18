@@ -9,12 +9,27 @@ to public Paddle-ready pricing and policy pages.
 - **Scored report** — deterministic scoring engine (`lib/analyzerCore.ts`) over
   Gemini vision observations; identical inputs are served from a Redis cache so
   scores never drift between runs.
+- **Evidence-backed benchmark dossier** — icons are measured at 184px, 64px,
+  and 32px, then icons and screenshots are compared with attributed published
+  references selected from the uploaded asset's inferred or user-confirmed
+  genre. A visible genre override changes benchmark selection without changing
+  the deterministic launch score. Steam,
+  Google Play, and App Store references are resolved from their store pages or
+  official store APIs. Each reference is labelled as the closest mechanic,
+  closest icon structure, or an adjacent shelf competitor. Complete, partial,
+  and unavailable fetch states are reported honestly instead of being hidden.
+  The report keeps measured facts, visible observations, and production
+  inferences explicitly separate.
 - **Shareable reports** — every analysis is persisted (`lib/reportStore.ts`,
   90-day TTL, unguessable id) and served at `/report/<id>` with asset
   thumbnails, noindex metadata, and a CTA back to the analyzer.
 - **Store shelf simulator** — the uploaded icon rendered inside a simulated
-  Play-style search list (dark) and top-charts grid (light) between procedural
-  decoy tiles (`app/components/ShelfSimulator.tsx`).
+  Play-style search list (dark) and top-charts grid (light) beside the same
+  attributed, genre-matched references used by the audit. Procedural decoys
+  are retained only as an offline fallback (`app/components/ShelfSimulator.tsx`).
+- **Constrained generation brief** — recommendations borrow the nearest proven
+  composition principle, never the reference artwork itself. Reference images
+  are analysis inputs only and are not passed into the image-fix generator.
 - **Variant re-scoring with an improvement guarantee** — every generated fix
   from `/api/fix` is re-scored (median of 3 runs, `lib/rescore.ts`) with the
   same engine as the original launch score; the UI shows the before/after
@@ -51,5 +66,19 @@ the pricing page CTA to Paddle Checkout or a Paddle-hosted purchase link.
 
 ```bash
 npm run lint
+npm test
 npm run build
 ```
+
+The Playwright suite includes deterministic reference-fetch failure tests and
+pixel baselines for the benchmark dossier, partial-reference warning, and shelf
+simulator. Review intentional UI changes with:
+
+```bash
+npm run test:visual
+npm run test:visual:update
+```
+
+`/visual-regression-fixture` is available only when the test server starts with
+`ENABLE_VISUAL_FIXTURE=1`; normal development and production requests receive a
+404.

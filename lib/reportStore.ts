@@ -2,6 +2,7 @@ import crypto from "node:crypto";
 import { redis } from "@/lib/ratelimit";
 import type { CalculatedReport, Observations } from "@/lib/analyzerCore";
 import { clientReadout } from "@/lib/analyzerCore";
+import type { BenchmarkEvidence } from "@/lib/iconEvidence";
 
 // Saved analysis reports power shareable /report/<id> links. Reports are
 // anonymous, addressable only by an unguessable id, and expire after 90 days.
@@ -26,6 +27,7 @@ export type StoredReport = {
   calculated: CalculatedReport;
   readout: ReturnType<typeof clientReadout>;
   assets: StoredReportAsset[];
+  benchmarkEvidence?: BenchmarkEvidence[];
 };
 
 export function newReportId(): string {
@@ -39,6 +41,7 @@ export async function saveReport(args: {
   calculated: CalculatedReport;
   observations: Observations;
   assets: StoredReportAsset[];
+  benchmarkEvidence?: BenchmarkEvidence[];
 }): Promise<string | null> {
   const id = newReportId();
   const doc: StoredReport = {
@@ -49,6 +52,7 @@ export async function saveReport(args: {
     calculated: args.calculated,
     readout: clientReadout(args.observations),
     assets: args.assets,
+    benchmarkEvidence: args.benchmarkEvidence,
   };
 
   try {
