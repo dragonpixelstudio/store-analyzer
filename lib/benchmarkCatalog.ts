@@ -42,12 +42,11 @@ export type BenchmarkCatalogEntry = {
   assetKinds: BenchmarkAssetKind[];
   pattern: string;
   visiblePrinciple: string;
-  localIconPath?: string;
 };
 
 // Curated by game/genre first, not by visual similarity alone. The resolver
-// fetches current published art from the named store page/API; localIconPath
-// is used only for Steam client icons that were collected in the audit.
+// always fetches the currently published art from the named store page/API at
+// request time - nothing is bundled or rehosted.
 export const BENCHMARK_CATALOG: BenchmarkCatalogEntry[] = [
   {
     id: "steam-hades",
@@ -60,7 +59,6 @@ export const BENCHMARK_CATALOG: BenchmarkCatalogEntry[] = [
     pattern: "dominant face / skull mark",
     visiblePrinciple:
       "A single high-contrast face shape occupies the icon and survives compact client layouts.",
-    localIconPath: "hades.png",
   },
   {
     id: "steam-dead-cells",
@@ -73,7 +71,6 @@ export const BENCHMARK_CATALOG: BenchmarkCatalogEntry[] = [
     pattern: "bold emblem mark",
     visiblePrinciple:
       "A simple flame silhouette works as one dominant emblem; it is a counterexample to literal face-crop rules.",
-    localIconPath: "dead-cells.png",
   },
   {
     id: "steam-brotato",
@@ -86,7 +83,6 @@ export const BENCHMARK_CATALOG: BenchmarkCatalogEntry[] = [
     pattern: "dominant mascot face",
     visiblePrinciple:
       "The mascot face is the mark, with minimal secondary detail competing at small size.",
-    localIconPath: "brotato.png",
   },
   {
     id: "steam-portal-2",

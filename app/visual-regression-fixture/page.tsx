@@ -11,12 +11,13 @@ const references: BenchmarkEvidence["references"] = [
     platform: "steam",
     assetKind: "icon",
     sourceUrl: "https://store.steampowered.com/app/1145360/Hades/",
-    thumb: "/benchmarks/steam-icons/hades.png",
+    thumb: "/benchmarks/placeholder-icons/ember.png",
     pattern: "dominant face / skull mark",
     visiblePrinciple:
       "A single high-contrast face shape occupies the icon and survives compact layouts.",
     matchedGenres: ["action", "roguelite"],
     role: "closest-mechanic",
+    coverage32Pct: 78.4,
   },
   {
     id: "steam-dead-cells",
@@ -24,12 +25,13 @@ const references: BenchmarkEvidence["references"] = [
     platform: "steam",
     assetKind: "icon",
     sourceUrl: "https://store.steampowered.com/app/588650/Dead_Cells/",
-    thumb: "/benchmarks/steam-icons/dead-cells.png",
+    thumb: "/benchmarks/placeholder-icons/bolt.png",
     pattern: "bold emblem mark",
     visiblePrinciple:
       "One dominant emblem demonstrates that a readable mark need not be a literal face crop.",
     matchedGenres: ["action", "roguelite"],
     role: "closest-icon-structure",
+    coverage32Pct: 64.9,
   },
   {
     id: "steam-brotato",
@@ -37,12 +39,13 @@ const references: BenchmarkEvidence["references"] = [
     platform: "steam",
     assetKind: "icon",
     sourceUrl: "https://store.steampowered.com/app/1942280/Brotato/",
-    thumb: "/benchmarks/steam-icons/brotato.png",
+    thumb: "/benchmarks/placeholder-icons/gem.png",
     pattern: "dominant mascot face",
     visiblePrinciple:
       "The mascot face remains the mark with little secondary detail competing at small size.",
     matchedGenres: ["survivor", "shooter", "roguelite"],
     role: "adjacent-shelf-competitor",
+    coverage32Pct: 71.2,
   },
 ];
 
@@ -138,7 +141,7 @@ export default function VisualRegressionFixture() {
         className="rounded-2xl border border-[var(--edge)] bg-[#0b1020] p-6"
       >
         <ShelfSimulator
-          iconUrl="/benchmarks/steam-icons/hades.png"
+          iconUrl="/benchmarks/placeholder-icons/ember.png"
           references={references.map((reference) => ({
             title: reference.title,
             thumb: reference.thumb,

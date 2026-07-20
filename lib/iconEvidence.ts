@@ -1,5 +1,3 @@
-import fs from "node:fs/promises";
-import path from "node:path";
 import sharp from "sharp";
 import {
   BENCHMARK_GENRES,
@@ -42,6 +40,12 @@ export type ResolvedBenchmarkReference = {
   genres: BenchmarkGenre[];
   matchedGenres: BenchmarkGenre[];
   role: BenchmarkReferenceRole;
+  /**
+   * The reference icon's own 32px subject coverage, measured with the same
+   * deterministic pipeline as the user's upload - so the UI can say
+   * "you 53%, Brotato 78%" instead of a context-free percentage.
+   */
+  coverage32Pct?: number;
 };
 
 export type BenchmarkReferenceFailure = {
@@ -304,15 +308,24 @@ async function resolveSteam(
   entry: BenchmarkCatalogEntry,
   assetKind: BenchmarkAssetKind
 ) {
-  if (assetKind === "icon" && entry.localIconPath) {
-    const filePath = path.join(
-      process.cwd(),
-      "public",
-      "benchmarks",
-      "steam-icons",
-      entry.localIconPath
+  if (assetKind === "icon") {
+    // Fetch the currently published client icon at request time instead of
+    // redistributing a bundled copy: the public ICommunityService API returns
+    // the live icon hash, so this self-heals when Valve rotates the art and
+    // we never host anyone's icon on our own domain.
+    const response = await safeFetch(
+      `https://api.steampowered.com/ICommunityService/GetApps/v1/?appids%5B0%5D=${encodeURIComponent(entry.storeId)}`
     );
-    return { buffer: await fs.readFile(filePath), imageUrl: entry.sourceUrl };
+    const payload = (await response.json()) as {
+      response?: { apps?: Array<{ appid?: number; icon?: string }> };
+    };
+    const iconHash = payload.response?.apps?.[0]?.icon;
+    if (!iconHash || !/^[a-f0-9]{40}$/i.test(iconHash)) {
+      throw new Error("Steam reference has no requested asset");
+    }
+    return imageFromUrl(
+      `https://media.steampowered.com/steamcommunity/public/images/apps/${encodeURIComponent(entry.storeId)}/${iconHash}.jpg`
+    );
   }
 
   const response = await safeFetch(
@@ -370,10 +383,19 @@ function decodeGoogleUrl(value: string) {
     .replace(/&amp;/g, "&");
 }
 
+// Sequential candidate probing must stay bounded: each fetch can take up to
+// FETCH_TIMEOUT_MS, and this runs inside the analyze request's serverless
+// time budget. A handful of candidates with a hard overall deadline is
+// enough - if Play's markup shifts and none resolve, we fail fast and the
+// report simply ships without this reference.
+const PLAY_CANDIDATE_LIMIT = 6;
+const PLAY_RESOLVE_DEADLINE_MS = 15_000;
+
 async function resolveGooglePlay(
   entry: BenchmarkCatalogEntry,
   assetKind: BenchmarkAssetKind
 ) {
+  const startedAt = Date.now();
   const response = await safeFetch(`${entry.sourceUrl}&hl=en&gl=US`);
   const html = await response.text();
   const urls = Array.from(
@@ -382,7 +404,8 @@ async function resolveGooglePlay(
   );
   const unique = [...new Set(urls)];
 
-  for (const url of unique.slice(0, 40)) {
+  for (const url of unique.slice(0, PLAY_CANDIDATE_LIMIT)) {
+    if (Date.now() - startedAt > PLAY_RESOLVE_DEADLINE_MS) break;
     try {
       const resolved = await imageFromUrl(url);
       const meta = await sharp(resolved.buffer).metadata();
@@ -481,6 +504,25 @@ export async function buildBenchmarkEvidence(args: {
         item.status === "fulfilled"
     )
     .map((item) => item.value);
+
+  // Measure each resolved reference icon with the exact pipeline used on the
+  // user's upload, so the dossier can show a like-for-like coverage bar.
+  if (args.assetKind === "icon") {
+    await Promise.all(
+      imageParts.map(async (item) => {
+        try {
+          const measured = await measureIconRead(
+            Buffer.from(item.base64, "base64")
+          );
+          item.reference.coverage32Pct = measured.measurements?.find(
+            (m) => m.sizePx === 32
+          )?.activePixelCoveragePct;
+        } catch {
+          // A missing reference measurement only hides its comparison bar.
+        }
+      })
+    );
+  }
   const failures: BenchmarkReferenceFailure[] = settled.flatMap(
     (item, index) => {
       if (item.status === "fulfilled") return [];

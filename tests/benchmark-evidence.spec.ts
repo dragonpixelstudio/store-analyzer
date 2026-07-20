@@ -7,7 +7,7 @@ import {
 } from "../lib/iconEvidence";
 
 const benchmarkIcon = readFileSync(
-  join(process.cwd(), "public", "benchmarks", "steam-icons", "hades.png")
+  join(process.cwd(), "public", "benchmarks", "placeholder-icons", "ember.png")
 );
 
 const genre = {

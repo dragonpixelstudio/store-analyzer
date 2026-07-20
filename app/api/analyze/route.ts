@@ -231,7 +231,7 @@ type ImagePartResult =
 
 // Bump this whenever prompt/scoring logic changes so stale cached reports
 // are naturally invalidated.
-const ANALYZER_PROMPT_VERSION = "evidence-v10-2026-07-18";
+const ANALYZER_PROMPT_VERSION = "evidence-v11-2026-07-18";
 const ANALYSIS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days
 
 function stableHash(value: unknown) {

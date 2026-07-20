@@ -4,6 +4,12 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import BenchmarkDossier from "@/app/components/BenchmarkDossier";
 import { SiteNav } from "@/app/components/SiteChrome";
+import {
+  RevealFlow,
+  ScoreRadar,
+  ScoreRing,
+  type RadarRow,
+} from "@/app/components/reportFx";
 import { loadReport, type StoredReport } from "@/lib/reportStore";
 
 export const dynamic = "force-dynamic";
@@ -116,6 +122,20 @@ export default async function SharedReportPage({ params }: { params: Params }) {
 
   const c = report.calculated;
   const decisionTone = toneColor(c.decision.tone);
+  const RADAR_LABELS: Record<string, string> = {
+    shelfReadability: "Shelf",
+    clickPull: "Click",
+    gameplayClarity: "Gameplay",
+    emotionalSignal: "Emotion",
+    marketingConfidence: "Marketing",
+    visualPolish: "Polish",
+  };
+  const radarRows: RadarRow[] = c.breakdown.map((row) => ({
+    label: RADAR_LABELS[row.key] ?? row.label,
+    value: row.assessed
+      ? c.scores[row.key as keyof typeof c.scores] ?? null
+      : null,
+  }));
   const createdAt = new Date(report.createdAt);
   const createdLabel = Number.isNaN(createdAt.getTime())
     ? ""
@@ -141,7 +161,7 @@ export default async function SharedReportPage({ params }: { params: Params }) {
         </div>
       </header>
 
-      <section className="mt-6 flex flex-col gap-4">
+      <RevealFlow className="mt-6 flex flex-col gap-4">
         {/* HERO - score + ship decision */}
         <div
           className="relative overflow-hidden rounded-2xl border p-7 md:p-9"
@@ -159,15 +179,9 @@ export default async function SharedReportPage({ params }: { params: Params }) {
           <div className="dpx-kicker mb-5" data-tone="gold">
             {c.reviewModeLabel} review
           </div>
-          <div className="flex flex-wrap items-end gap-x-7 gap-y-3">
-            <div
-              className="font-score font-black leading-[.82]"
-              style={{ fontSize: "clamp(72px,15vw,120px)", color: scoreColor(c.launchScore) }}
-            >
-              {c.launchScore}
-              <span className="font-brand text-[26px] font-bold text-[var(--faint)]">/100</span>
-            </div>
-            <div className="pb-2">
+          <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
+            <ScoreRing score={c.launchScore} potential={c.potentialAfterFixes} />
+            <div className="min-w-[220px] flex-1">
               <div
                 className="font-brand text-[clamp(24px,4.6vw,40px)] font-bold leading-[.95]"
                 style={{ color: decisionTone }}
@@ -183,6 +197,11 @@ export default async function SharedReportPage({ params }: { params: Params }) {
                 </div>
               )}
             </div>
+            {radarRows.some((row) => row.value !== null) && (
+              <div className="hidden w-[300px] flex-none lg:block">
+                <ScoreRadar rows={radarRows} size={280} />
+              </div>
+            )}
           </div>
           {c.summaryLine && (
             <p className="mt-5 max-w-2xl text-[16px] font-semibold leading-snug text-[var(--foreground)]">
@@ -191,6 +210,15 @@ export default async function SharedReportPage({ params }: { params: Params }) {
             </p>
           )}
         </div>
+
+        {/* score radar for viewports where the hero has no room for it */}
+        {radarRows.some((row) => row.value !== null) && (
+          <div className="lg:hidden">
+            <ReportCard title="Score profile">
+              <ScoreRadar rows={radarRows} />
+            </ReportCard>
+          </div>
+        )}
 
         {/* Reviewed assets */}
         {report.assets.some((a) => a.thumb) && (
@@ -272,7 +300,7 @@ export default async function SharedReportPage({ params }: { params: Params }) {
               </span>
               <div className="relative h-2 flex-1 overflow-hidden rounded-full border border-[var(--edge)] bg-black/40">
                 <span
-                  className="absolute top-1/2 h-3.5 w-[3px] -translate-y-1/2 rounded-sm bg-white shadow-[0_0_8px_rgba(255,255,255,.7)]"
+                  className="dpx-meter-marker absolute top-1/2 h-3.5 w-[3px] -translate-y-1/2 rounded-sm bg-white shadow-[0_0_8px_rgba(255,255,255,.7)]"
                   style={{ left: `${Math.max(2, Math.min(98, c.conversionRisk.position))}%` }}
                 />
               </div>
@@ -365,7 +393,7 @@ export default async function SharedReportPage({ params }: { params: Params }) {
             Analyze my assets
           </Link>
         </div>
-      </section>
+      </RevealFlow>
     </main>
   );
 }

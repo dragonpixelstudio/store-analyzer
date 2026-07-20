@@ -70,6 +70,19 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+/**
+ * Reports expire after 90 days, but the landing-page sample must stay alive:
+ * every successful read of the featured report re-arms its TTL.
+ */
+export async function refreshReportTtl(id: string): Promise<void> {
+  if (!/^[A-Za-z0-9_-]{8,24}$/.test(id)) return;
+  try {
+    await redis.expire(`${REPORT_KEY_PREFIX}${id}`, REPORT_TTL_SECONDS);
+  } catch (err) {
+    console.error("report ttl refresh failed", err);
+  }
+}
+
 export async function loadReport(id: string): Promise<StoredReport | null> {
   if (!/^[A-Za-z0-9_-]{8,24}$/.test(id)) return null;
 

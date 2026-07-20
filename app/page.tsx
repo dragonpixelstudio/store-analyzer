@@ -19,6 +19,12 @@ import {
   type BenchmarkReferenceRole,
 } from "@/lib/benchmarkCatalog";
 import { identifyAsset, inferPlatform } from "@/lib/storeSpecs";
+import {
+  RevealFlow,
+  ScoreRadar,
+  ScoreRing,
+  type RadarRow,
+} from "@/app/components/reportFx";
 
 const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2 MB
 const MAX_SCREENSHOTS = 3;
@@ -562,30 +568,6 @@ function readImage(file: File): Promise<{ w: number; h: number; broken: boolean;
 }
 
 /* count-up for result numbers, respects reduced motion */
-function useCountUp(target: number | null, duration = 900) {
-  const [val, setVal] = useState(0);
-  useEffect(() => {
-    if (target == null) {
-      const id = requestAnimationFrame(() => setVal(0));
-      return () => cancelAnimationFrame(id);
-    }
-    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
-      const id = requestAnimationFrame(() => setVal(target));
-      return () => cancelAnimationFrame(id);
-    }
-    let raf = 0;
-    const t0 = performance.now();
-    const tick = (now: number) => {
-      const p = Math.min(1, (now - t0) / duration);
-      setVal(Math.round(target * (1 - Math.pow(1 - p, 3))));
-      if (p < 1) raf = requestAnimationFrame(tick);
-    };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
-  }, [target, duration]);
-  return val;
-}
-
 /* ---------- review dimensions (icons defined once, reused by the idle
    feature row and the loading scanner so the set never drifts) ---------- */
 const REVIEW_DIMENSIONS: { title: string; desc: string; icon: React.ReactNode }[] = [
@@ -811,6 +793,244 @@ function ChecklistCols({
   );
 }
 
+/* ---------- landing sample: a real saved report, never a fantasy mock ---------- */
+type SampleData = {
+  id: string;
+  launchScore: number;
+  potentialAfterFixes: number;
+  decisionLabel: string;
+  decisionTone: "good" | "warn" | "bad";
+  verdict: string;
+  summaryLine: string;
+  reviewModeLabel: string;
+  strengths: string[];
+  weaknesses: string[];
+  topFixAction: string;
+  thumb: string;
+  assetLabel: string;
+  assetKind: string;
+};
+
+function parseSample(v: unknown): SampleData | null {
+  if (!isRecord(v) || !isRecord(v.sample)) return null;
+  const s = v.sample;
+  if (typeof s.launchScore !== "number" || typeof s.id !== "string") return null;
+  return {
+    id: s.id,
+    launchScore: s.launchScore,
+    potentialAfterFixes: num(s.potentialAfterFixes) ?? s.launchScore,
+    decisionLabel: str(s.decisionLabel) || "",
+    decisionTone:
+      s.decisionTone === "good" || s.decisionTone === "bad" ? s.decisionTone : "warn",
+    verdict: str(s.verdict) || "",
+    summaryLine: str(s.summaryLine) || "",
+    reviewModeLabel: str(s.reviewModeLabel) || "",
+    strengths: strList(s.strengths),
+    weaknesses: strList(s.weaknesses),
+    topFixAction: str(s.topFixAction) || "",
+    thumb: str(s.thumb) || "",
+    assetLabel: str(s.assetLabel) || "",
+    assetKind: str(s.assetKind) || "",
+  };
+}
+
+function SampleShowcase() {
+  const [sample, setSample] = useState<SampleData | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/sample")
+      .then((r) => r.json())
+      .then((data) => {
+        if (!cancelled) setSample(parseSample(data));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const toneColor = (tone: "good" | "warn" | "bad") =>
+    tone === "good" ? "var(--green)" : tone === "bad" ? "var(--magenta)" : "var(--gold)";
+
+  return (
+    <section className="mx-auto mt-12 w-full max-w-[880px]" aria-label="Sample readout">
+      <div
+        className="relative rounded-2xl border border-[rgba(24,224,255,.28)] p-5 md:p-6"
+        style={{
+          background:
+            "radial-gradient(circle at 16% 12%,rgba(24,224,255,.16),transparent 40%),radial-gradient(circle at 86% 84%,rgba(255,61,180,.14),transparent 42%),linear-gradient(160deg,rgba(15,22,42,.98),rgba(9,8,22,.96))",
+        }}
+      >
+        <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
+          <div className="dpx-kicker" data-tone="cyan">
+            {sample ? "Real report" : "Sample"}
+          </div>
+          <span className="text-[12.5px] font-semibold text-[var(--faint)]">
+            {sample
+              ? `${sample.reviewModeLabel} review · live data, not a mockup`
+              : "what your readout returns"}
+          </span>
+        </div>
+
+        {sample ? (
+          <>
+            <div className="grid grid-cols-1 gap-3 sm:grid-cols-[auto_1fr_1.4fr]">
+              {sample.thumb && (
+                <div className="flex items-center justify-center gap-4 rounded-2xl border border-[var(--edge)] bg-[rgba(7,10,20,.55)] px-5 py-3.5">
+                  <div className="text-center">
+                    {/* eslint-disable-next-line @next/next/no-img-element -- stored report thumbnail */}
+                    <img
+                      src={sample.thumb}
+                      alt={sample.assetLabel || "Reviewed asset"}
+                      className="mx-auto h-20 w-auto max-w-[120px] rounded-xl border border-white/10 bg-black object-contain"
+                    />
+                    <div className="mt-1 text-[8.5px] font-semibold uppercase tracking-[.12em] text-[var(--faint)]">
+                      Full
+                    </div>
+                  </div>
+                  {sample.assetKind === "icon" && (
+                    <div className="text-center">
+                      {/* eslint-disable-next-line @next/next/no-img-element -- stored report thumbnail at store size */}
+                      <img
+                        src={sample.thumb}
+                        alt=""
+                        aria-hidden="true"
+                        className="mx-auto h-8 w-8 rounded-md border border-white/10 bg-black object-cover"
+                      />
+                      <div className="mt-1 text-[8.5px] font-semibold uppercase tracking-[.12em] text-[var(--faint)]">
+                        32px
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              <div className="flex items-center justify-center gap-4 rounded-2xl border border-[var(--edge)] bg-[rgba(7,10,20,.55)] px-4 py-3.5">
+                <ScoreRing
+                  score={sample.launchScore}
+                  potential={sample.potentialAfterFixes}
+                  size={108}
+                />
+                {sample.potentialAfterFixes > sample.launchScore && (
+                  <div className="max-w-[110px] text-[11px] font-bold leading-snug text-[var(--green)]">
+                    up to {sample.potentialAfterFixes}/100 if every fix lands
+                  </div>
+                )}
+              </div>
+
+              <div className="flex flex-col justify-center rounded-2xl border border-[var(--edge)] bg-[rgba(7,10,20,.55)] px-4 py-3.5">
+                <div
+                  className="font-brand text-[17px] font-black leading-tight"
+                  style={{ color: toneColor(sample.decisionTone) }}
+                >
+                  {sample.decisionLabel}
+                </div>
+                {sample.summaryLine && (
+                  <p className="mt-1.5 text-[12.5px] font-semibold leading-5 text-[var(--muted)]">
+                    {sample.summaryLine}
+                  </p>
+                )}
+              </div>
+            </div>
+
+            {(sample.strengths.length > 0 || sample.weaknesses.length > 0) && (
+              <div className="mt-3 grid grid-cols-1 gap-x-6 gap-y-2 rounded-2xl border border-[var(--edge)] bg-[rgba(7,10,20,.55)] px-4 py-3.5 sm:grid-cols-2">
+                <div>
+                  {sample.strengths.map((t, i) => (
+                    <div key={`s-${i}`} className="mb-1 flex items-start gap-2 text-[12.5px] font-semibold text-[var(--muted)]">
+                      <span className="flex-none font-bold text-[var(--green)]">✓</span>
+                      <span className="leading-snug">{t}</span>
+                    </div>
+                  ))}
+                </div>
+                <div>
+                  {sample.weaknesses.map((t, i) => (
+                    <div key={`w-${i}`} className="mb-1 flex items-start gap-2 text-[12.5px] font-semibold text-[#c8aab2]">
+                      <span className="flex-none font-bold text-[var(--magenta)]">✗</span>
+                      <span className="leading-snug">{t}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            <div className="mt-3 flex flex-wrap items-center justify-between gap-3">
+              {sample.topFixAction && (
+                <span className="min-w-0 text-[12.5px] font-semibold text-[var(--muted)]">
+                  <span className="font-brand mr-1.5 rounded-full border border-[rgba(105,255,0,.35)] bg-[rgba(105,255,0,.08)] px-2 py-0.5 text-[10px] font-black uppercase tracking-[.08em] text-[var(--green)]">
+                    Top fix
+                  </span>
+                  {sample.topFixAction}
+                </span>
+              )}
+              <a
+                href={`/report/${sample.id}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="font-brand flex-none rounded-full border border-[rgba(24,224,255,.4)] bg-[rgba(24,224,255,.08)] px-4 py-2 text-[12px] font-bold text-[var(--cyan)] transition hover:-translate-y-0.5 hover:bg-[rgba(24,224,255,.15)]"
+              >
+                Open the full report →
+              </a>
+            </div>
+          </>
+        ) : (
+          <div className="grid grid-cols-2 gap-3 md:grid-cols-[1fr_1fr_1.5fr]">
+            <div className="rounded-2xl border border-[var(--edge)] bg-[rgba(7,10,20,.55)] px-4 py-3.5">
+              <div className="text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
+                Launch score
+              </div>
+              <div className="font-score mt-1 text-[38px] font-black leading-[1.05] text-[var(--cyan)]">
+                72
+                <span className="font-brand text-base font-bold text-[var(--faint)]">/100</span>
+              </div>
+            </div>
+
+            <div className="rounded-2xl border border-[var(--edge)] bg-[rgba(7,10,20,.55)] px-4 py-3.5">
+              <div className="text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
+                Potential
+              </div>
+              <div className="font-score mt-1 text-[38px] font-black leading-[1.05] text-[var(--gold)]">
+                88
+                <span className="font-brand text-base font-bold text-[var(--faint)]">/100</span>
+              </div>
+            </div>
+
+            <div className="col-span-2 flex flex-col justify-center rounded-2xl border border-[var(--edge)] bg-[rgba(7,10,20,.55)] px-4 py-3.5 md:col-span-1">
+              <div className="flex items-center gap-2.5">
+                <span className="h-2.5 w-2.5 rounded-full bg-[var(--gold)] shadow-[0_0_12px_var(--gold)]" />
+                <span className="text-[15px] font-bold">
+                  Verdict: <b className="text-[var(--gold)]">Strong, needs polish</b>
+                </span>
+              </div>
+              <p className="mt-1.5 text-[12.5px] font-semibold leading-5 text-[var(--faint)]">
+                Every review ends with a ship call and the top fixes, ranked.
+              </p>
+            </div>
+          </div>
+        )}
+
+        <div className="mt-3 grid grid-cols-2 gap-2.5 md:grid-cols-4">
+          {REVIEW_DIMENSIONS.map((item) => (
+            <div
+              key={item.title}
+              className="flex items-center gap-2.5 rounded-xl border border-[var(--edge)] bg-white/[.025] px-3.5 py-2.5 transition hover:-translate-y-0.5 hover:border-[rgba(24,224,255,.4)]"
+            >
+              {item.icon}
+              <span>
+                <span className="block text-[13.5px] font-bold">{item.title}</span>
+                <span className="block text-[11.5px] font-semibold text-[var(--faint)]">
+                  {item.desc}
+                </span>
+              </span>
+            </div>
+          ))}
+        </div>
+      </div>
+    </section>
+  );
+}
+
 function ShareReportBar({ reportId }: { reportId: string }) {
   const [copied, setCopied] = useState(false);
   const shareUrl =
@@ -1011,7 +1231,18 @@ export default function Home() {
   const inputRef = useRef<HTMLInputElement>(null);
   const dragDepth = useRef(0);
 
-  const launchVal = useCountUp(score);
+  const RADAR_LABELS: Record<string, string> = {
+    shelfReadability: "Shelf",
+    clickPull: "Click",
+    gameplayClarity: "Gameplay",
+    emotionalSignal: "Emotion",
+    marketingConfidence: "Marketing",
+    visualPolish: "Polish",
+  };
+  const radarRows: RadarRow[] = breakdown.map((row) => ({
+    label: RADAR_LABELS[row.key] ?? row.label,
+    value: row.assessed ? scores?.[row.key as ScoreKey] ?? null : null,
+  }));
 
   /* ---------- asset management ---------- */
   const normalize = useCallback((list: Asset[]): Asset[] => {
@@ -1516,76 +1747,9 @@ export default function Home() {
           </div>
         </section>
 
-        {/* SAMPLE - what a finished readout returns */}
-        <section className="mx-auto mt-12 w-full max-w-[880px]" aria-label="Sample readout">
-          <div
-            className="relative rounded-2xl border border-[rgba(24,224,255,.28)] p-5 md:p-6"
-            style={{
-              background:
-                "radial-gradient(circle at 16% 12%,rgba(24,224,255,.16),transparent 40%),radial-gradient(circle at 86% 84%,rgba(255,61,180,.14),transparent 42%),linear-gradient(160deg,rgba(15,22,42,.98),rgba(9,8,22,.96))",
-            }}
-          >
-          <div className="mb-4 flex flex-wrap items-center justify-center gap-3">
-            <div className="dpx-kicker" data-tone="cyan">
-              Sample
-            </div>
-            <span className="text-[12.5px] font-semibold text-[var(--faint)]">
-              what your readout returns
-            </span>
-          </div>
-
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-[1fr_1fr_1.5fr]">
-            <div className="rounded-2xl border border-[var(--edge)] bg-[rgba(7,10,20,.55)] px-4 py-3.5">
-              <div className="text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
-                Launch score
-              </div>
-              <div className="font-score mt-1 text-[38px] font-black leading-[1.05] text-[var(--cyan)]">
-                72
-                <span className="font-brand text-base font-bold text-[var(--faint)]">/100</span>
-              </div>
-            </div>
-
-            <div className="rounded-2xl border border-[var(--edge)] bg-[rgba(7,10,20,.55)] px-4 py-3.5">
-              <div className="text-[10px] font-semibold uppercase tracking-[.14em] text-[var(--muted)]">
-                Potential
-              </div>
-              <div className="font-score mt-1 text-[38px] font-black leading-[1.05] text-[var(--gold)]">
-                88
-                <span className="font-brand text-base font-bold text-[var(--faint)]">/100</span>
-              </div>
-            </div>
-
-            <div className="col-span-2 flex flex-col justify-center rounded-2xl border border-[var(--edge)] bg-[rgba(7,10,20,.55)] px-4 py-3.5 md:col-span-1">
-              <div className="flex items-center gap-2.5">
-                <span className="h-2.5 w-2.5 rounded-full bg-[var(--gold)] shadow-[0_0_12px_var(--gold)]" />
-                <span className="text-[15px] font-bold">
-                  Verdict: <b className="text-[var(--gold)]">Strong, needs polish</b>
-                </span>
-              </div>
-              <p className="mt-1.5 text-[12.5px] font-semibold leading-5 text-[var(--faint)]">
-                Every review ends with a ship call and the top fixes, ranked.
-              </p>
-            </div>
-          </div>
-
-          <div className="mt-3 grid grid-cols-2 gap-2.5 md:grid-cols-4">
-            {REVIEW_DIMENSIONS.map((item) => (
-              <div
-                key={item.title}
-                className="flex items-center gap-2.5 rounded-xl border border-[var(--edge)] bg-white/[.025] px-3.5 py-2.5 transition hover:-translate-y-0.5 hover:border-[rgba(24,224,255,.4)]"
-              >
-                {item.icon}
-                <span>
-                  <span className="block text-[13.5px] font-bold">{item.title}</span>
-                  <span className="block text-[11.5px] font-semibold text-[var(--faint)]">
-                    {item.desc}
-                  </span>
-                </span>
-              </div>
-            ))}
-          </div>
-          </div>
-        </section>
+        {/* SAMPLE - a real saved report when SAMPLE_REPORT_ID is configured,
+            the generic mock otherwise */}
+        <SampleShowcase />
       </>
       )}
 
@@ -1598,7 +1762,7 @@ export default function Home() {
 
       {/* result dashboard */}
       {hasResult && (
-        <section className="mt-8 flex flex-col gap-4">
+        <RevealFlow className="mt-8 flex flex-col gap-4">
           {/* slim re-upload bar */}
           <button
             onClick={reset}
@@ -1629,18 +1793,9 @@ export default function Home() {
             <div className="dpx-kicker mb-5" data-tone="gold">
               Your result
             </div>
-            <div className="flex flex-wrap items-end gap-x-7 gap-y-3">
-              <div
-                className="font-score font-black leading-[.82]"
-                style={{
-                  fontSize: "clamp(72px,15vw,120px)",
-                  color: score != null ? scoreColor(score) : "var(--cyan)",
-                }}
-              >
-                {launchVal}
-                <span className="font-brand text-[26px] font-bold text-[var(--faint)]">/100</span>
-              </div>
-              <div className="pb-2">
+            <div className="flex flex-wrap items-center gap-x-8 gap-y-4">
+              {score != null && <ScoreRing score={score} potential={potential} />}
+              <div className="min-w-[220px] flex-1">
                 {decision && (
                   <div
                     className="font-brand text-[clamp(24px,4.6vw,40px)] font-bold leading-[.95]"
@@ -1658,6 +1813,11 @@ export default function Home() {
                   </div>
                 )}
               </div>
+              {radarRows.some((row) => row.value !== null) && (
+                <div className="hidden w-[300px] flex-none lg:block">
+                  <ScoreRadar rows={radarRows} size={280} />
+                </div>
+              )}
             </div>
             {summaryLine && (
               <p className="mt-5 max-w-2xl text-[16px] font-semibold leading-snug text-[var(--foreground)]">
@@ -1681,6 +1841,15 @@ export default function Home() {
 
           {/* shareable permalink - persisted server-side, safe to send around */}
           {reportId && <ShareReportBar reportId={reportId} />}
+
+          {/* score radar for viewports where the hero has no room for it */}
+          {radarRows.some((row) => row.value !== null) && (
+            <div className="lg:hidden">
+              <ReportCard title="Score profile">
+                <ScoreRadar rows={radarRows} />
+              </ReportCard>
+            </div>
+          )}
 
           {/* 32PX STORE TEST - strongest feature, directly under the verdict (icon only) */}
           {previewAsset && (
@@ -1768,7 +1937,7 @@ export default function Home() {
                 </span>
                 <div className="relative h-2 flex-1 overflow-hidden rounded-full border border-[var(--edge)] bg-black/40">
                   <span
-                    className="absolute top-1/2 h-3.5 w-[3px] -translate-y-1/2 rounded-sm bg-white shadow-[0_0_8px_rgba(255,255,255,.7)]"
+                    className="dpx-meter-marker absolute top-1/2 h-3.5 w-[3px] -translate-y-1/2 rounded-sm bg-white shadow-[0_0_8px_rgba(255,255,255,.7)]"
                     style={{ left: `${Math.max(2, Math.min(98, risk.position))}%` }}
                   />
                 </div>
@@ -2110,7 +2279,7 @@ export default function Home() {
             </div>
           </div>
           )}
-        </section>
+        </RevealFlow>
       )}
 
       {!hasResult && !loading && (

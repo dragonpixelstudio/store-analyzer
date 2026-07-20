@@ -40,6 +40,11 @@ to public Paddle-ready pricing and policy pages.
 
 1. Copy `.env.example` to `.env.local`.
 2. Fill in `GEMINI_API_KEY` and the Upstash Redis variables for analysis.
+3. Optional: set `SAMPLE_REPORT_ID` to a saved report id (the last segment of
+   any report share link) to feature that real report in the landing-page
+   sample section. Unset, the landing shows a generic mock. The featured
+   report's 90-day TTL is refreshed on every read, so it never expires while
+   configured.
 
 ## Development
 

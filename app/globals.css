@@ -539,3 +539,51 @@ body::after {
     animation: none;
   }
 }
+
+/* ---------- report motion layer ---------- */
+.dpx-reveal {
+  opacity: 0;
+  transform: translateY(16px);
+}
+.dpx-reveal-in {
+  opacity: 1;
+  transform: none;
+  transition: opacity 0.55s ease, transform 0.55s ease;
+}
+
+.dpx-ring-arc {
+  transition: stroke-dashoffset 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.dpx-radar-poly {
+  transform-origin: center;
+  animation: dpx-radar-in 0.9s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@keyframes dpx-radar-in {
+  from {
+    transform: scale(0.25);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+.dpx-meter-marker {
+  transition: left 0.9s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dpx-reveal {
+    opacity: 1;
+    transform: none;
+  }
+  .dpx-ring-arc,
+  .dpx-meter-marker {
+    transition: none;
+  }
+  .dpx-radar-poly {
+    animation: none;
+  }
+}

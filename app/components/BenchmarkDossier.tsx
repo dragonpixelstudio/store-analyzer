@@ -11,6 +11,7 @@ export type BenchmarkReference = {
   visiblePrinciple: string;
   matchedGenres?: string[];
   role?: BenchmarkReferenceRole;
+  coverage32Pct?: number;
 };
 
 export type BenchmarkEvidence = {
@@ -175,45 +176,68 @@ export default function BenchmarkDossier({
 
       <ReferenceFetchState evidence={evidence} />
 
-      {evidence.assetKind === "icon" && measurement32 && (
-        <div className="mb-5 grid grid-cols-1 gap-3 sm:grid-cols-3">
-          <div className="rounded-xl border border-[var(--edge)] bg-black/25 p-3">
-            <div className="text-[9px] font-bold uppercase tracking-[.12em] text-[var(--faint)]">
-              32px mask coverage
+      {evidence.assetKind === "icon" && measurement32 && (() => {
+        const yourPct = measurement32.activePixelCoveragePct;
+        const measuredRefs = evidence.references
+          .filter((ref) => typeof ref.coverage32Pct === "number")
+          .sort((a, b) => (b.coverage32Pct ?? 0) - (a.coverage32Pct ?? 0));
+        const rows = [
+          { label: "Your icon", pct: yourPct, you: true },
+          ...measuredRefs.map((ref) => ({
+            label: ref.title,
+            pct: ref.coverage32Pct as number,
+            you: false,
+          })),
+        ];
+        const bestRef = measuredRefs[0]?.coverage32Pct ?? null;
+
+        return (
+          <div className="mb-5 rounded-xl border border-[var(--edge)] bg-black/25 p-4">
+            <div className="text-[10px] font-bold uppercase tracking-[.14em] text-[var(--muted)]">
+              How much subject survives at store size
             </div>
-            <div className="font-score mt-1 text-[24px] font-black text-[var(--cyan)]">
-              {measurement32.activePixelCoveragePct}%
-            </div>
-            <div className="text-[11px] font-semibold text-[var(--muted)]">
+            <p className="mt-1.5 text-[12.5px] font-semibold leading-snug text-[var(--muted)]">
+              Share of the 32px store tile filled by readable subject
               {evidence.measurementConfidence === "measured"
-                ? "measured from alpha"
-                : "background-contrast estimate"}
+                ? ", measured pixel by pixel"
+                : ", estimated from background contrast"}
+              . More filled tile usually means a faster shelf read
+              {bestRef !== null && yourPct < bestRef
+                ? ` - the strongest reference here fills ${bestRef}%.`
+                : "."}
+            </p>
+            <div className="mt-3 flex flex-col gap-2">
+              {rows.map((row) => (
+                <div key={row.label} className="flex items-center gap-3">
+                  <span
+                    className={`w-[92px] flex-none truncate text-[12px] font-bold ${
+                      row.you ? "text-[var(--cyan)]" : "text-[var(--muted)]"
+                    }`}
+                  >
+                    {row.label}
+                  </span>
+                  <div className="h-3 flex-1 overflow-hidden rounded-md border border-[var(--edge)] bg-black/40">
+                    <div
+                      className="h-full rounded-[2px]"
+                      style={{
+                        width: `${Math.min(100, Math.max(2, row.pct))}%`,
+                        background: row.you ? "var(--cyan)" : "rgba(255,255,255,.28)",
+                      }}
+                    />
+                  </div>
+                  <span
+                    className={`font-brand w-[52px] flex-none text-right text-[12.5px] font-black ${
+                      row.you ? "text-[var(--cyan)]" : "text-[var(--faint)]"
+                    }`}
+                  >
+                    {row.pct}%
+                  </span>
+                </div>
+              ))}
             </div>
           </div>
-          <div className="rounded-xl border border-[var(--edge)] bg-black/25 p-3">
-            <div className="text-[9px] font-bold uppercase tracking-[.12em] text-[var(--faint)]">
-              Active bounds
-            </div>
-            <div className="font-score mt-1 text-[24px] font-black text-[var(--cyan)]">
-              {measurement32.activeBoundsCoveragePct}%
-            </div>
-            <div className="text-[11px] font-semibold text-[var(--muted)]">
-              occupied square, not face share
-            </div>
-          </div>
-          <div className="rounded-xl border border-[var(--edge)] bg-black/25 p-3">
-            <div className="text-[9px] font-bold uppercase tracking-[.12em] text-[var(--faint)]">
-              Downsample occupancy
-            </div>
-            <div className="font-score mt-1 text-[24px] font-black text-[var(--cyan)]">
-              {evidence.smallSizeRetentionPct ?? 0}%
-            </div>
-            <div className="text-[11px] font-semibold text-[var(--muted)]">
-              32px mask ÷ 184px mask; not a clarity score
-            </div>
-          </div>
-        </div>
-      )}
+        );
+      })()}
 
       {orderedReferences.length > 0 && (
         <div className="mb-5">
@@ -314,8 +338,16 @@ export default function BenchmarkDossier({
 
       <details className="mt-4 rounded-xl border border-dashed border-[var(--edge)] bg-black/20 px-4 py-3">
         <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-[.12em] text-[var(--faint)]">
-          Evidence limits
+          Evidence limits &amp; raw measurements
         </summary>
+        {evidence.assetKind === "icon" && measurement32 && (
+          <p className="mt-2 text-[11.5px] font-semibold leading-snug text-[var(--faint)]">
+            Raw numbers: 32px active-pixel coverage{" "}
+            {measurement32.activePixelCoveragePct}% · active bounding box{" "}
+            {measurement32.activeBoundsCoveragePct}% of the square · 32px vs
+            184px mask retention {evidence.smallSizeRetentionPct ?? 0}%.
+          </p>
+        )}
         {evidence.caveats.map((caveat) => (
           <p
             key={caveat}
