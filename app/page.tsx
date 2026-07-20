@@ -2288,34 +2288,112 @@ export default function Home() {
           How It Works
         </h2>
 
-        <div className="mt-8 grid grid-cols-1 gap-4">
-          {[
-            {
-              step: "01",
-              title: "Upload Assets",
-              text: "Add your icon and current store screenshots. The analyzer works best with real gameplay captures, not mockups.",
-            },
-            {
-              step: "02",
-              title: "Get The Review",
-              text: "The report checks the asset like a store visitor, a creative director, and a UA manager looking at conversion risk.",
-            },
-            {
-              step: "03",
-              title: "Generate Targeted Fixes",
-              text: "The edit plan drives the output: precise algorithmic corrections are applied directly, and AI renders only where new image generation is required. Compare before/after and export the winner.",
-            },
-          ].map((item) => (
-            <article key={item.step} className="dpx-step">
-              <span className="dpx-step-num">{item.step}</span>
-              <h3 className="font-brand text-[19px] font-semibold text-[var(--foreground)]">
-                {item.title}
-              </h3>
-              <p className="mt-2 max-w-[74ch] text-[16.5px] font-medium leading-6 text-[var(--text-2)]">
-                {item.text}
-              </p>
-            </article>
-          ))}
+        <p className="mx-auto mt-3 max-w-[48ch] text-center text-[15px] font-medium text-[var(--text-2)]">
+          One loop: analyze, fix, prove the fix is better.
+        </p>
+
+        <div className="relative mx-auto mt-10 max-w-[1000px]">
+          {/* pipeline connector - desktop horizontal / mobile vertical rail */}
+          <div
+            aria-hidden="true"
+            className="absolute left-[7%] right-[7%] top-[43px] hidden h-px md:block"
+            style={{
+              background:
+                "linear-gradient(90deg,transparent,rgba(24,224,255,.4) 15%,rgba(255,194,61,.4) 45%,rgba(255,61,180,.4) 70%,rgba(105,255,0,.4) 88%,transparent)",
+            }}
+          />
+          <div
+            aria-hidden="true"
+            className="absolute bottom-4 left-[43px] top-4 w-px md:hidden"
+            style={{
+              background:
+                "linear-gradient(180deg,rgba(24,224,255,.4),rgba(255,194,61,.4),rgba(255,61,180,.4),rgba(105,255,0,.4))",
+            }}
+          />
+
+          <div className="grid grid-cols-1 gap-7 md:grid-cols-4 md:gap-4">
+            {[
+              {
+                n: 1,
+                title: "Upload",
+                text: "Icon, screenshots, or capsule. Free score.",
+                tone: "rgba(24,224,255,1)",
+                dim: "rgba(24,224,255,.35)",
+                icon: (
+                  <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 16V5" /><path d="m8 9 4-4 4 4" /><rect x="4" y="16" width="16" height="4" rx="1.5" />
+                  </svg>
+                ),
+              },
+              {
+                n: 2,
+                title: "Scored review",
+                text: "0-100 with evidence: 32px test, shelf sim, benchmarks.",
+                tone: "rgba(255,194,61,1)",
+                dim: "rgba(255,194,61,.35)",
+                icon: (
+                  <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 21a9 9 0 1 1 9-9" /><path d="M12 12l4.5-4.5" /><circle cx="12" cy="12" r="1.4" fill="currentColor" />
+                  </svg>
+                ),
+              },
+              {
+                n: 3,
+                title: "Generate fixes",
+                text: "Precision crop plus an AI designer pass apply the top fixes.",
+                tone: "rgba(255,61,180,1)",
+                dim: "rgba(255,61,180,.35)",
+                icon: (
+                  <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="m15 5 4 4" /><path d="M13 7 5 15v4h4l8-8" /><path d="M19.5 2.5 21 4l-1.5 1.5L18 4z" />
+                  </svg>
+                ),
+              },
+              {
+                n: 4,
+                title: "Proof",
+                text: "Every result re-scored by the same engine. Worse than yours = free.",
+                tone: "rgba(105,255,0,1)",
+                dim: "rgba(105,255,0,.35)",
+                icon: (
+                  <svg viewBox="0 0 24 24" className="h-8 w-8" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                    <path d="M12 3c2.5 1.6 5 2.4 7.5 2.4 0 7.2-2.5 12-7.5 15.2C7 17.4 4.5 12.6 4.5 5.4 7 5.4 9.5 4.6 12 3z" /><path d="m9 11.5 2.2 2.2L15.5 9" />
+                  </svg>
+                ),
+              },
+            ].map((step) => (
+              <div
+                key={step.n}
+                className="relative flex items-start gap-4 md:flex-col md:items-center md:text-center"
+              >
+                <div
+                  className="relative z-[1] flex h-[86px] w-[86px] flex-none items-center justify-center rounded-2xl border bg-[#0b101e]"
+                  style={{
+                    borderColor: step.dim,
+                    color: step.tone,
+                    boxShadow: `0 0 22px -6px ${step.tone}`,
+                  }}
+                >
+                  {step.icon}
+                  <span
+                    className="font-brand absolute -right-2 -top-2 flex h-[26px] w-[26px] items-center justify-center rounded-full text-[12.5px] font-black text-[#08101a]"
+                    style={{ background: step.tone }}
+                  >
+                    {step.n}
+                  </span>
+                </div>
+                <div className="pt-1.5 md:pt-0">
+                  <h3 className="font-brand text-[18px] font-bold text-[var(--foreground)] md:mt-3.5">
+                    {step.title}
+                  </h3>
+                  <p className="mt-1.5 max-w-[26ch] text-[13.5px] font-semibold leading-[1.45] text-[var(--muted)] md:mx-auto">
+                    {step.text}
+                  </p>
+                </div>
+              </div>
+            ))}
+          </div>
+
         </div>
       </section>
       )}
