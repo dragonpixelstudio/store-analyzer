@@ -26,7 +26,11 @@ export async function normalizeForAnalysis(
 // 256-bit difference hash on 16 rows plus a coarse 4x4 color signature.
 // Robust to rescaling and re-encoding; distinct for genuinely different art.
 export async function perceptualSignature(buffer: Buffer): Promise<string> {
+  // Flatten transparency onto black FIRST: without this, transparent regions
+  // carry undefined RGB that shifts with resampling, and the same transparent
+  // icon at two export sizes fails the color check.
   const { data } = await sharp(buffer)
+    .flatten({ background: { r: 0, g: 0, b: 0 } })
     .greyscale()
     .resize(17, 16, { fit: "fill" })
     .raw()
@@ -48,7 +52,7 @@ export async function perceptualSignature(buffer: Buffer): Promise<string> {
   }
 
   const { data: rgb } = await sharp(buffer)
-    .removeAlpha()
+    .flatten({ background: { r: 0, g: 0, b: 0 } })
     .resize(4, 4, { fit: "fill" })
     .raw()
     .toBuffer({ resolveWithObject: true });
@@ -89,8 +93,15 @@ function singleSignatureClose(a: string, b: string): boolean {
     if (bits > MAX_DHASH_BITS) return false;
   }
 
+  // One color cell may exceed the one-level tolerance (edge cells straddle
+  // quantization boundaries when resampling); genuinely different art fails
+  // by a wide margin (~17 violating cells measured).
+  let colorViolations = 0;
   for (let i = 0; i < ca.length; i++) {
-    if (Math.abs(parseInt(ca[i], 8) - parseInt(cb[i], 8)) > 1) return false;
+    if (Math.abs(parseInt(ca[i], 8) - parseInt(cb[i], 8)) > 1) {
+      colorViolations++;
+      if (colorViolations > 1) return false;
+    }
   }
 
   return true;

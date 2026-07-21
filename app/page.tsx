@@ -1364,12 +1364,18 @@ export default function Home() {
       fd.append("creatives", c.file);
       fd.append("creativeKinds", c.role);
     });
-    // Target platform derived from what the dimensions say the assets are, so
-    // the review and generation know whether this is Steam or mobile.
+    // Target platform derived only from UNAMBIGUOUS assets (capsules, feature
+    // graphics). A square icon must never vote: the same icon exported at
+    // 192/512/1024 would infer different stores, fragmenting the consistency
+    // cache and giving the same art different scores.
     const detectedPlatform =
       usable.some((a) => a.role === "steamCapsule")
         ? "steam"
-        : inferPlatform(usable.map((a) => ({ widthPx: a.w, heightPx: a.h })));
+        : inferPlatform(
+            usable
+              .filter((a) => a.role !== "icon")
+              .map((a) => ({ widthPx: a.w, heightPx: a.h }))
+          );
     if (detectedPlatform) fd.append("platform", detectedPlatform);
     if (benchmarkGenre !== "auto") {
       fd.append("benchmarkGenre", benchmarkGenre);

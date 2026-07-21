@@ -292,9 +292,9 @@ export function selectBenchmarkEntries(args: {
 }) {
   const limit = Math.max(2, Math.min(4, args.limit ?? 3));
   const desiredPlatform = args.platform;
-  const selectedIds = new Set<string>();
+  const selectedTitles = new Set<string>();
 
-  return [...BENCHMARK_CATALOG]
+  const ranked = [...BENCHMARK_CATALOG]
     .filter((entry) => entry.assetKinds.includes(args.assetKind))
     .map((entry) => {
       const genreHits = entry.genres.filter((genre) =>
@@ -312,18 +312,26 @@ export function selectBenchmarkEntries(args: {
         score: genreHits * 10 + platformScore,
       };
     })
-    // Relevance is mandatory. A cross-store reference from the same genre is
-    // more useful than unrelated art from the target store.
-    .filter(({ genreHits }) => genreHits > 0)
-    .sort((a, b) => b.score - a.score || a.entry.title.localeCompare(b.entry.title))
-    .filter(({ entry }) => {
-      // Prefer the target store through scoring, then avoid showing the same
-      // title twice when its art is published on multiple storefronts.
-      const key = entry.title.toLowerCase();
-      if (selectedIds.has(key)) return false;
-      selectedIds.add(key);
-      return true;
-    })
-    .slice(0, limit)
-    .map(({ entry }) => entry);
+    .sort((a, b) => b.score - a.score || a.entry.title.localeCompare(b.entry.title));
+
+  const dedupe = ({ entry }: { entry: BenchmarkCatalogEntry }) => {
+    // Avoid showing the same title twice when its art is published on
+    // multiple storefronts.
+    const key = entry.title.toLowerCase();
+    if (selectedTitles.has(key)) return false;
+    selectedTitles.add(key);
+    return true;
+  };
+
+  // Genre-matched entries first - relevance leads. If the genre yields fewer
+  // than the limit (e.g. only two shooter icons exist for this store), fill
+  // the remaining slots with shelf neighbors from the ranked list so the
+  // reference row is never visually incomplete; their empty matchedGenres
+  // tells both the model and the UI they are adjacency-only references.
+  const picked = ranked.filter(({ genreHits }) => genreHits > 0).filter(dedupe);
+  const fillers = ranked
+    .filter(({ genreHits }) => genreHits === 0)
+    .filter(dedupe);
+
+  return [...picked, ...fillers].slice(0, limit).map(({ entry }) => entry);
 }
