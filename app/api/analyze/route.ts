@@ -231,7 +231,7 @@ type ImagePartResult =
 
 // Bump this whenever prompt/scoring logic changes so stale cached reports
 // are naturally invalidated.
-const ANALYZER_PROMPT_VERSION = "evidence-v12-2026-07-20";
+const ANALYZER_PROMPT_VERSION = "median-v13-2026-07-20";
 const ANALYSIS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days
 
 function stableHash(value: unknown) {
@@ -825,25 +825,62 @@ export async function POST(req: Request) {
       ...benchmarkParts,
     ];
 
-    const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
-      contents: [{ role: "user", parts }],
-      config: {
-        temperature: 0,
-        topP: 0.1,
-        topK: 1,
-        candidateCount: 1,
-        responseMimeType: "application/json",
-      },
-    });
+    // The pinned score must never be one lucky draw: even at temperature 0 a
+    // single vision pass drifts a few observation booleans (worth 5-10 score
+    // points). Three independent reads run in parallel and the run whose
+    // launch score is the MEDIAN becomes the report - same policy as the
+    // variant re-scorer, so the analyzer and re-scorer agree on method.
+    const ANALYSIS_RUNS = 3;
+    const scoringFlags = {
+      hasIcon: Boolean(icon),
+      hasScreens: screenshots.length > 0,
+      hasCreatives: creatives.length > 0,
+    };
+    const runAnalysis = async () => {
+      const response = await ai.models.generateContent({
+        model: "gemini-2.5-flash",
+        contents: [{ role: "user", parts }],
+        config: {
+          temperature: 0,
+          topP: 0.1,
+          topK: 1,
+          candidateCount: 1,
+          responseMimeType: "application/json",
+        },
+      });
+      const observations = sanitizeObservations(
+        parseAnalyzerReply(response.text || "")
+      );
+      if (!observations) throw new Error("unusable analysis run");
+      return {
+        observations,
+        calculated: calculateDragonPixelScores(
+          observations,
+          reviewMode,
+          scoringFlags
+        ),
+      };
+    };
 
-    const rawText = response.text || "";
+    const settledRuns = await Promise.allSettled(
+      Array.from({ length: ANALYSIS_RUNS }, runAnalysis)
+    );
+    const runs = settledRuns
+      .filter(
+        (item): item is PromiseFulfilledResult<Awaited<ReturnType<typeof runAnalysis>>> =>
+          item.status === "fulfilled"
+      )
+      .map((item) => item.value)
+      .sort((a, b) => a.calculated.launchScore - b.calculated.launchScore);
 
-    let parsed: unknown;
-
-    try {
-      parsed = parseAnalyzerReply(rawText);
-    } catch {
+    if (runs.length === 0) {
+      const firstError = settledRuns.find(
+        (item): item is PromiseRejectedResult => item.status === "rejected"
+      )?.reason;
+      // Preserve 503-style upstream errors for the outer handler's messaging.
+      if (firstError instanceof Error && /503|UNAVAILABLE|high demand/.test(firstError.message)) {
+        throw firstError;
+      }
       return jsonResponse(
         {
           error:
@@ -853,16 +890,7 @@ export async function POST(req: Request) {
       );
     }
 
-    const observations = sanitizeObservations(parsed);
-    if (!observations) {
-      return jsonResponse(
-        {
-          error:
-            "The AI review returned an unexpected structure. Please try again.",
-        },
-        { status: 502 }
-      );
-    }
+    const { observations, calculated } = runs[Math.floor(runs.length / 2)];
 
     const benchmarkComparisons =
       observations.benchmarkComparisons ||
@@ -880,11 +908,6 @@ export async function POST(req: Request) {
             : undefined)
       )
     );
-    const calculated = calculateDragonPixelScores(observations, reviewMode, {
-      hasIcon: Boolean(icon),
-      hasScreens: screenshots.length > 0,
-      hasCreatives: creatives.length > 0,
-    });
     const verdict = verdictFromScore(calculated.launchScore);
 
     const payload = {
