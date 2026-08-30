@@ -19,6 +19,7 @@ import {
   type BenchmarkReferenceRole,
 } from "@/lib/benchmarkCatalog";
 import { identifyAsset, inferPlatform } from "@/lib/storeSpecs";
+import { track } from "@/app/track";
 import {
   RevealFlow,
   ScoreRadar,
@@ -30,60 +31,6 @@ const MAX_FILE_BYTES = 2 * 1024 * 1024; // 2 MB
 const MAX_SCREENSHOTS = 3;
 const MAX_CREATIVES = 3;
 const OK_TYPES = ["image/png", "image/jpeg", "image/webp"];
-
-/* ---------- paid offer: self-serve analysis + generation plans ---------- */
-type PackId = "quick" | "indie" | "pro";
-
-const PACKS: {
-  id: PackId;
-  name: string;
-  price: string;
-  anchor: string;
-  bullets: string[];
-  cta: string;
-  flagship?: boolean;
-}[] = [
-  {
-    id: "quick",
-    name: "Quick Fix",
-    price: "$5",
-    anchor: "6 generation credits, one-time",
-    bullets: [
-      "For one icon or screenshot",
-      "Generate 2-3 focused variants",
-      "No subscription required",
-      "Upgrade later if you keep polishing",
-    ],
-    cta: "View one-time option",
-  },
-  {
-    id: "indie",
-    name: "Indie",
-    price: "$19/mo",
-    anchor: "50 generation credits + 100 reports/month",
-    bullets: [
-      "Fix icons, screenshots, capsules, and feature graphics",
-      "Full-resolution exports in platform-ready sizes",
-      "Before/after saved projects",
-      "Credit cost shown before generation",
-    ],
-    cta: "View Indie pricing",
-    flagship: true,
-  },
-  {
-    id: "pro",
-    name: "Pro",
-    price: "$49/mo",
-    anchor: "200 generation credits + 500 reports/month",
-    bullets: [
-      "Batch screenshot fixing",
-      "Priority generation queue",
-      "Platform export bundles",
-      "Unlimited projects and brand presets",
-    ],
-    cta: "View Pro pricing",
-  },
-];
 
 type AccountPlan = "free" | "quick" | "indie" | "pro";
 
@@ -1039,6 +986,7 @@ function ShareReportBar({ reportId }: { reportId: string }) {
   const copy = async () => {
     try {
       await navigator.clipboard.writeText(shareUrl);
+      track("share_copy");
       setCopied(true);
       setTimeout(() => setCopied(false), 2200);
     } catch {
@@ -1288,6 +1236,7 @@ export default function Home() {
           error: err,
         });
       }
+      if (next.some((a) => !a.error)) track("upload");
       setAssets((prev) => {
         const merged = [...prev];
         for (const a of next) {
@@ -1381,6 +1330,7 @@ export default function Home() {
       fd.append("benchmarkGenre", benchmarkGenre);
     }
 
+    track("analyze_start");
     setLoading(true);
     setError("");
     setScore(null);
@@ -1440,6 +1390,17 @@ export default function Home() {
       setReportId(data.reportId ?? null);
       setSpecNotes(data.specNotes ?? []);
       setBenchmarkEvidence(data.benchmarkEvidence ?? []);
+      track("analyze_success");
+      // Viral-loop attribution: this visitor viewed a shared report earlier
+      // this session, then analyzed their own asset. Count it once.
+      try {
+        if (sessionStorage.getItem("dpx_saw_shared_report")) {
+          track("loop_return");
+          sessionStorage.removeItem("dpx_saw_shared_report");
+        }
+      } catch {
+        // sessionStorage may be unavailable; loop metric is best-effort.
+      }
     } catch {
       setError("Could not reach the analyzer. Check your connection and try again.");
     } finally {
@@ -2212,77 +2173,50 @@ export default function Home() {
           )}
           {!isPaidSubscriber && (
           <div
-            className="rounded-2xl border-[1.5px] p-6"
+            className="rounded-2xl border-[1.5px] p-6 text-center"
             style={{
               borderColor: "rgba(24,224,255,.34)",
               background:
                 "radial-gradient(600px 260px at 50% -20%,rgba(24,224,255,.1),transparent 60%),linear-gradient(160deg,rgba(15,22,42,.96),rgba(8,9,18,.96))",
             }}
           >
-            <div className="dpx-kicker" data-tone="magenta">
-              Action plan
+            <div className="dpx-kicker mx-auto" data-tone="cyan">
+              This review was free
             </div>
-            <h2 className="font-brand mt-1 text-[22px] font-semibold">
-              Turn this edit plan into finished variants
+            <h2 className="font-brand mx-auto mt-2 max-w-[32ch] text-[22px] font-semibold">
+              Know a dev shipping soon? Send them their score.
             </h2>
-            <p className="mb-5 mt-1.5 text-sm font-semibold text-[var(--muted)]">
-              Generate a one-off fix when you only need one asset, or use a plan when you are
-              polishing a full store page.
+            <p className="mx-auto mb-5 mt-1.5 max-w-[46ch] text-sm font-semibold text-[var(--muted)]">
+              Every report has a permanent link, no login needed. The fastest way to
+              settle a &ldquo;does this icon work?&rdquo; argument.
             </p>
-
-            <div className="grid grid-cols-1 gap-3 lg:grid-cols-3">
-              {PACKS.map((p) => (
-                <div
-                  key={p.id}
-                  className="dpx-plan-card flex flex-col rounded-2xl border p-5"
-                  style={{
-                    borderColor: p.flagship ? "rgba(255,194,61,.4)" : "var(--edge)",
-                    background: p.flagship ? "#21190c" : "#0d1423",
-                  }}
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button
+                onClick={reset}
+                className="font-brand min-h-[48px] rounded-2xl px-6 text-[14px] font-black text-[#05121a] transition hover:-translate-y-0.5 hover:brightness-110"
+                style={{ background: "linear-gradient(120deg,var(--cyan),var(--magenta))" }}
+              >
+                Analyze another asset
+              </button>
+              {reportId && (
+                <a
+                  href={`/report/${reportId}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="font-brand min-h-[48px] rounded-2xl border border-[var(--edge)] bg-white/[.03] px-6 py-3 text-[14px] font-bold text-[var(--muted)] transition hover:border-[rgba(24,224,255,.4)] hover:text-[var(--cyan)]"
                 >
-                  <div className="flex items-baseline justify-between gap-2">
-                    <span className="font-brand text-[15px] font-semibold">{p.name}</span>
-                    <span
-                      className="font-score text-[22px] font-black"
-                      style={{ color: p.flagship ? "var(--gold)" : "var(--cyan)" }}
-                    >
-                      {p.price}
-                    </span>
-                  </div>
-                  <p className="mt-1 text-[12.5px] font-semibold text-[var(--faint)]">{p.anchor}</p>
-                  <ul className="mt-3 flex flex-1 flex-col gap-1.5">
-                    {p.bullets.map((b) => (
-                      <li
-                        key={b}
-                        className="flex items-start gap-2 text-[13px] font-semibold text-[var(--muted)]"
-                      >
-                        <span className="font-brand mt-px flex-none font-black text-[var(--green)]">✓</span>
-                        <span className="leading-snug">{b}</span>
-                      </li>
-                    ))}
-                  </ul>
-                  <Link
-                    href="/pricing"
-                    className="font-brand mt-4 inline-flex min-h-[46px] w-full items-center justify-center rounded-xl text-center text-[13px] font-semibold transition hover:-translate-y-0.5 hover:brightness-110"
-                    style={
-                      p.flagship
-                        ? { background: "linear-gradient(120deg,var(--gold),#ff8a3d)", color: "#1a1205" }
-                        : { background: "linear-gradient(120deg,var(--cyan),var(--magenta))", color: "#05121a" }
-                    }
-                  >
-                    {p.cta}
-                  </Link>
-                </div>
-              ))}
+                  Open shareable report ↗
+                </a>
+              )}
             </div>
-
-            <div className="mt-4 flex flex-wrap items-center gap-x-3 gap-y-2">
-              <span className="text-[12px] font-semibold text-[var(--faint)]">
-                Secure checkout is handled by Dodo Payments. Every plan is self-serve
-                software: analysis reports are included with your plan, and credits
-                are only spent when an improved image is delivered to you.
-              </span>
-            </div>
+            <p className="mx-auto mt-5 max-w-[52ch] text-[12px] font-semibold text-[var(--faint)]">
+              Want finished art, not just the plan? Generate improved versions above -
+              you only pay when a variant beats your original.{" "}
+              <Link href="/pricing" className="text-[var(--muted)] underline underline-offset-2 hover:text-[var(--cyan)]">
+                See credit options
+              </Link>
+              .
+            </p>
           </div>
           )}
         </RevealFlow>

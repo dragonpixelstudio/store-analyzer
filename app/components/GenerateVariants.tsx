@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { track } from "@/app/track";
 
 type FixAssetType = "icon" | "screenshot" | "capsule" | "feature-graphic";
 type FixPlatform = "steam" | "google-play" | "app-store";
@@ -74,6 +75,7 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
 
   const run = useCallback(async () => {
     if (!selected) return;
+    track("generate_click");
     setBusy(true);
     setError("");
     setVariants([]);

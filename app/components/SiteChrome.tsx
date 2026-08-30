@@ -4,9 +4,12 @@ import type { ReactNode } from "react";
 
 export const CONTACT_EMAIL = "contact@dragonpixelstudio.com";
 
+// Pricing is intentionally out of the primary nav: leading with a price cools
+// a visitor before the tool has proven its value. The /pricing page still
+// exists (payment-provider verification, checkout, footer link) - it's just
+// not the second thing a first-time visitor is shown.
 const navLinks = [
   { href: "/", label: "Analyzer" },
-  { href: "/pricing", label: "Pricing" },
   { href: "/contact", label: "Contact" },
 ];
 

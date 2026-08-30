@@ -3,6 +3,7 @@ import Image from "next/image";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import BenchmarkDossier from "@/app/components/BenchmarkDossier";
+import ShareBeacon from "@/app/report/[id]/ShareBeacon";
 import { SiteNav } from "@/app/components/SiteChrome";
 import {
   RevealFlow,
@@ -143,6 +144,7 @@ export default async function SharedReportPage({ params }: { params: Params }) {
 
   return (
     <main className="relative z-[1] mx-auto w-[min(1060px,calc(100%-44px))] pb-16">
+      <ShareBeacon />
       <header className="pt-8 pb-1 text-center">
         <Link href="/" className="mb-6 inline-flex items-center gap-2.5">
           <Image
