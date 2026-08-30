@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import Link from "next/link";
 import { CONTACT_EMAIL, PageShell, PolicySection } from "@/app/components/SiteChrome";
 
 export const metadata: Metadata = {
@@ -14,42 +13,17 @@ export default function ContactPage() {
       title="Store Analyzer Support"
       intro="Use this page for account support, billing, refunds, and product questions."
     >
-      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-        <div className="rounded-2xl border border-[rgba(24,224,255,.26)] bg-[rgba(24,224,255,.055)] p-5">
-          <h2 className="font-brand text-[19px] font-semibold">Email support</h2>
-          <p className="mt-3 text-[14.5px] font-medium leading-7 text-[var(--text-2)]">
-            For account access, billing, credit usage, refund requests, or general support, email:
-          </p>
-          <a
-            href={`mailto:${CONTACT_EMAIL}`}
-            className="font-brand mt-4 inline-flex rounded-xl border border-[rgba(24,224,255,.35)] bg-black/25 px-4 py-3 text-sm font-semibold text-[var(--cyan)] transition hover:-translate-y-0.5 hover:bg-black/40"
-          >
-            {CONTACT_EMAIL}
-          </a>
-        </div>
-
-        <div className="rounded-2xl border border-[var(--edge)] bg-white/[.025] p-5">
-          <h2 className="font-brand text-[19px] font-semibold">Useful links</h2>
-          <div className="mt-4 grid gap-2 text-[14px] font-medium text-[var(--text-2)]">
-            <Link href="/pricing" className="rounded-xl border border-white/10 px-4 py-3 transition hover:text-[var(--cyan)]">
-              Pricing and plans
-            </Link>
-            <Link href="/refund-policy" className="rounded-xl border border-white/10 px-4 py-3 transition hover:text-[var(--cyan)]">
-              Refund policy
-            </Link>
-            <Link href="/privacy" className="rounded-xl border border-white/10 px-4 py-3 transition hover:text-[var(--cyan)]">
-              Privacy policy
-            </Link>
-            <a
-              href="https://www.dragonpixelstudio.com/contact.html"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="rounded-xl border border-white/10 px-4 py-3 transition hover:text-[var(--cyan)]"
-            >
-              Main studio contact page
-            </a>
-          </div>
-        </div>
+      <div className="rounded-2xl border border-[rgba(24,224,255,.26)] bg-[rgba(24,224,255,.055)] p-5">
+        <h2 className="font-brand text-[19px] font-semibold">Email support</h2>
+        <p className="mt-3 max-w-[60ch] text-[14.5px] font-medium leading-7 text-[var(--text-2)]">
+          For account access, billing, credit usage, refund requests, or general support, email:
+        </p>
+        <a
+          href={`mailto:${CONTACT_EMAIL}`}
+          className="font-brand mt-4 inline-flex rounded-xl border border-[rgba(24,224,255,.35)] bg-black/25 px-4 py-3 text-sm font-semibold text-[var(--cyan)] transition hover:-translate-y-0.5 hover:bg-black/40"
+        >
+          {CONTACT_EMAIL}
+        </a>
       </div>
 
       <PolicySection title="What to include">

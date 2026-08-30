@@ -45,9 +45,6 @@ export function SiteFooter({ className = "" }: { className?: string }) {
               <Link href="/" className="transition hover:text-[var(--cyan)]">
                 Analyzer
               </Link>
-              <Link href="/pricing" className="transition hover:text-[var(--cyan)]">
-                Pricing
-              </Link>
               <Link href="/contact" className="transition hover:text-[var(--cyan)]">
                 Contact
               </Link>
@@ -64,9 +61,6 @@ export function SiteFooter({ className = "" }: { className?: string }) {
               </Link>
               <Link href="/privacy" className="transition hover:text-[var(--cyan)]">
                 Privacy Policy
-              </Link>
-              <Link href="/refund-policy" className="transition hover:text-[var(--cyan)]">
-                Refund Policy
               </Link>
             </nav>
           </div>
