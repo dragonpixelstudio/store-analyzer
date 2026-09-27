@@ -1,0 +1,19 @@
+# Staging migration configuration. This file does not enable live purchases.
+[build]
+  command = "npm run build -- --webpack"
+  publish = ".next"
+
+[build.environment]
+  NODE_VERSION = "22"
+  NEXT_TELEMETRY_DISABLED = "1"
+
+[functions]
+  directory = "netlify/functions"
+  node_bundler = "esbuild"
+  external_node_modules = ["sharp"]
+  included_files = ["node_modules/@img/sharp-linux-x64/**", "node_modules/@img/sharp-libvips-linux-x64/**"]
+
+# Next.js support is automatically provided by Netlify's OpenNext adapter.
+# Configure server secrets privately with Functions scope on the destination.
+# DPX_HOST_PROVIDER=netlify must be set there for trusted network quotas.
+# Background artwork processing is configured in netlify/functions/artwork-background.ts.

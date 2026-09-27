@@ -138,7 +138,7 @@ export default function VisualRegressionFixture() {
       </section>
       <section
         data-testid="shelf-simulator"
-        className="rounded-2xl border border-[var(--edge)] bg-[#0b1020] p-6"
+        className="rounded-2xl border border-[var(--edge)] bg-[var(--well)] p-6"
       >
         <ShelfSimulator
           iconUrl="/benchmarks/placeholder-icons/ember.png"

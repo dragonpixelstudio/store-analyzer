@@ -1,0 +1,2 @@
+import { defineConfig } from "@playwright/test";
+export default defineConfig({ testDir: "./tests", testMatch: ["jobs.spec.ts","identity-security.spec.ts", "artwork-document.spec.ts", "analysis-workflow.spec.ts", "final-review.spec.ts", "request-security.spec.ts", "billing-security.spec.ts", "billing-redis.spec.ts", "studio-formats.spec.ts", "benchmark-evidence.spec.ts"], fullyParallel: false, workers: 1, reporter: "list", outputDir: "test-results/domain" });

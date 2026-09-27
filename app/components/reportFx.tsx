@@ -162,8 +162,7 @@ export type RadarRow = {
 };
 
 /**
- * Six-axis score radar. Unassessed axes render dimmed at the center so the
- * shape never lies about missing inputs.
+ * Six-axis score radar. Missing values leave gaps, never zero-valued vertices.
  */
 export function ScoreRadar({ rows, size = 300 }: { rows: RadarRow[]; size?: number }) {
   const cx = size / 2;
@@ -176,12 +175,12 @@ export function ScoreRadar({ rows, size = 300 }: { rows: RadarRow[]; size?: numb
   });
   const ringPath = (frac: number) =>
     rows.map((_, i) => `${pt(i, frac).x},${pt(i, frac).y}`).join(" ");
-  const dataPath = rows
-    .map((row, i) => {
-      const frac = row.value === null ? 0.04 : Math.max(0.04, row.value / 100);
-      return `${pt(i, frac).x},${pt(i, frac).y}`;
-    })
-    .join(" ");
+  const allAssessed = rows.every(row => row.value !== null);
+  const fraction = (value: number) => Math.min(1, Math.max(0, value / 100));
+  const dataPath = rows.map((row, i) => {
+    const p = pt(i, fraction(row.value ?? 0));
+    return `${p.x},${p.y}`;
+  }).join(" ");
 
   return (
     <svg
@@ -189,7 +188,7 @@ export function ScoreRadar({ rows, size = 300 }: { rows: RadarRow[]; size?: numb
       viewBox={`0 0 ${size} ${size + 10}`}
       className="mx-auto max-w-[340px]"
       role="img"
-      aria-label="Score profile radar"
+      aria-label={`Score profile: ${rows.map(row => `${row.label}: ${row.value === null ? "not assessed" : row.value + " out of 100"}`).join("; ")}`}
     >
       {[0.25, 0.5, 0.75, 1].map((frac) => (
         <polygon
@@ -211,19 +210,19 @@ export function ScoreRadar({ rows, size = 300 }: { rows: RadarRow[]; size?: numb
           strokeWidth={1}
         />
       ))}
-      <polygon
+      {allAssessed && <polygon
         className="dpx-radar-poly"
         points={dataPath}
         fill="rgba(24,224,255,.18)"
         stroke="var(--cyan)"
         strokeWidth={2}
         strokeLinejoin="round"
-      />
+      />}
       {rows.map((row, i) => {
-        const frac = row.value === null ? 0.04 : Math.max(0.04, row.value / 100);
+        const frac = fraction(row.value ?? 0);
         const p = pt(i, frac);
         return row.value === null ? null : (
-          <circle key={`d-${i}`} cx={p.x} cy={p.y} r={3.2} fill="var(--cyan)" />
+          <g key={`d-${i}`} className="dpx-radar-poly">{!allAssessed && <line x1={cx} y1={cy} x2={p.x} y2={p.y} stroke="var(--cyan)" strokeWidth={2} />}<circle cx={p.x} cy={p.y} r={3.2} fill="var(--cyan)" /></g>
         );
       })}
       {rows.map((row, i) => {
@@ -238,7 +237,7 @@ export function ScoreRadar({ rows, size = 300 }: { rows: RadarRow[]; size?: numb
             dominantBaseline="middle"
             fontSize={11.5}
             fontWeight={700}
-            fill={assessed ? "#aab4c8" : "#4a5266"}
+            fill={assessed ? "#aab4c8" : "#9098a6"}
           >
             {row.label}
             <tspan

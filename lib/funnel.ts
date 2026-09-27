@@ -1,3 +1,4 @@
+import { storagePrefix } from "@/lib/storageScope";
 import { redis } from "@/lib/ratelimit";
 
 // Lightweight funnel instrumentation for the Option-3 free-tool experiment.
@@ -13,7 +14,13 @@ export const FUNNEL_EVENTS = [
   "share_copy", // share link copied
   "share_open", // a /report/<id> page was viewed
   "loop_return", // an analyze that arrived from a shared report (viral loop)
-  "generate_click", // paid generation initiated
+  "generate_click", // paid generation initiated (analyzer fixes)
+  "gallery_generate", // "Generate this" pressed on a gallery card
+  "studio_generate", // studio icon/capsule delivered
+  "studio_edit", // studio edit-chip / custom edit delivered
+  "studio_score", // a studio result was scored
+  "studio_download", // a studio result was downloaded
+  "shot_create", // a real gameplay capture was loaded into the screenshot editor
 ] as const;
 
 export type FunnelEvent = (typeof FUNNEL_EVENTS)[number];
@@ -32,7 +39,7 @@ export function isFunnelEvent(value: unknown): value is FunnelEvent {
 }
 
 export async function recordEvent(event: FunnelEvent): Promise<void> {
-  const key = `dpx:funnel:${dayKey()}:${event}`;
+  const key = `${storagePrefix()}funnel:${dayKey()}:${event}`;
   try {
     await redis.incr(key);
     await redis.expire(key, TTL_SECONDS);
@@ -56,7 +63,7 @@ export async function readFunnel(days = 14): Promise<{
   const keys: string[] = [];
   for (const date of dates) {
     for (const event of FUNNEL_EVENTS) {
-      keys.push(`dpx:funnel:${date}:${event}`);
+      keys.push(`${storagePrefix()}funnel:${date}:${event}`);
     }
   }
 

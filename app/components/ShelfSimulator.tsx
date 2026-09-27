@@ -443,8 +443,7 @@ export function ScreenshotCarousel({ shots }: { shots: string[] }) {
         </div>
       </div>
       <p className="text-[13px] font-semibold italic text-[var(--faint)]">
-        Shoppers see your screenshots in this exact order - and most never swipe past the
-        second. Your first screenshot has to sell the game on its own.
+        This preview follows your upload order. Make the first screenshot explain the main player action, then use later images to add detail.
       </p>
     </div>
   );

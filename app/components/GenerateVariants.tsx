@@ -1,5 +1,6 @@
 "use client";
 
+import { artworkRequest } from "@/lib/artworkRequest";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { track } from "@/app/track";
 
@@ -20,7 +21,7 @@ type Variant = {
   /** Re-scored with the same engine as the original launch score. */
   score?: number;
   scoreSummary?: string;
-  /** False when the variant scored below the original and was refunded. */
+  /** Whether the delivered variant was charged. */
   charged?: boolean;
 };
 
@@ -81,7 +82,7 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
     setVariants([]);
     try {
       const { base64, mimeType } = await fileToBase64(selected.file);
-      const res = await fetch("/api/fix", {
+      const res = await artworkRequest("/api/fix", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
@@ -108,7 +109,7 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
         setRemaining(data.credits.remaining);
       }
     } catch {
-      setError("Generation failed. Nothing was charged. Please retry.");
+      setError("Connection interrupted. Check your wallet before retrying; pending credits recover after 15 minutes.");
     } finally {
       setBusy(false);
     }
@@ -118,7 +119,7 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
     (variant: Variant, index: number) => {
       const link = document.createElement("a");
       link.href = `data:${variant.mimeType};base64,${variant.base64}`;
-      link.download = `${selected?.assetType ?? "asset"}-improved-${index + 1}.png`;
+      link.download = `${selected?.assetType ?? "asset"}-improved-${index + 1}.${variant.mimeType === "image/webp" ? "webp" : variant.mimeType === "image/jpeg" ? "jpg" : "png"}`;
       link.click();
     },
     [selected]
@@ -134,13 +135,13 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
       : `Uses ${VARIANTS_PER_RUN} credits · ${remaining} available now`;
 
   return (
-    <div className="mt-4 rounded-xl border border-[var(--edge)] bg-black/20 p-4">
+    <div className="mt-4 rounded-xl border border-[var(--edge)] bg-[var(--well)] p-4">
       <div className="flex flex-wrap items-center gap-3">
         {sources.length > 1 && (
           <select
             value={selected?.id}
             onChange={(e) => setSelectedId(e.target.value)}
-            className="rounded-lg border border-[var(--edge)] bg-black/30 px-3 py-2 text-[13px] font-semibold text-[var(--foreground)]"
+            className="rounded-lg border border-[var(--edge)] bg-[var(--well)] px-3 py-2 text-[13px] font-semibold text-[var(--foreground)]"
             aria-label="Asset to improve"
           >
             {sources.map((s) => (
@@ -188,7 +189,7 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
         onChange={(e) => setInstruction(e.target.value)}
         maxLength={200}
         placeholder="Optional steer, e.g. keep the purple palette"
-        className="mt-3 w-full rounded-lg border border-[var(--edge)] bg-black/30 px-3 py-2 text-[13px] font-semibold text-[var(--foreground)] placeholder:text-[var(--faint)]"
+        className="mt-3 w-full rounded-lg border border-[var(--edge)] bg-[var(--well)] px-3 py-2 text-[13px] font-semibold text-[var(--foreground)] placeholder:text-[var(--faint)]"
       />
 
       <p className="mt-2 text-[12px] font-semibold text-[var(--faint)]">
@@ -235,7 +236,6 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
           }
         });
         const bestDelta = bestIndex >= 0 ? deltas[bestIndex] : null;
-        const refundedCount = variants.filter((v) => v.charged === false).length;
 
         return (
           <div className="mt-6">
@@ -246,15 +246,13 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
             <p className="mb-4 text-[13px] font-semibold text-[var(--faint)]">
               {bestDelta !== null && bestDelta > 0
                 ? `Best result: ${titles[bestIndex]} at ${variants[bestIndex].score}/100 (+${bestDelta} vs your original).`
-                : refundedCount > 0
-                  ? `No variant beat your original this run - ${refundedCount === variants.length ? "nothing was charged" : `${refundedCount} credit${refundedCount > 1 ? "s" : ""} refunded`}. Try a steer below and regenerate.`
-                  : "Each version is re-scored by the same engine that scored your original."}
+                : "Each delivered version costs 1 credit. Scores are guidance, not a guarantee of improvement."}
             </p>
 
             {/* side-by-side: original first, improved versions after; all
                 three stay on one row above mobile so no card is orphaned */}
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
-              <figure className="overflow-hidden rounded-xl border border-[var(--edge)] bg-black/20">
+              <figure className="overflow-hidden rounded-xl border border-[var(--edge)] bg-[var(--well)]">
                 <div className="flex min-h-[38px] items-center justify-between px-3 pt-2.5">
                   <span className="text-[12px] font-black uppercase tracking-[.06em] text-[var(--faint)]">
                     Before · your original
@@ -280,11 +278,10 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
 
               {variants.map((v, i) => {
                 const isBest = i === bestIndex && deltas[i] !== null && (deltas[i] as number) > 0;
-                const notCharged = v.charged === false;
                 return (
                   <figure
                     key={i}
-                    className="group overflow-hidden rounded-xl bg-black/30 transition"
+                    className="group overflow-hidden rounded-xl bg-[var(--well)] transition"
                     style={{
                       border: isBest
                         ? "1.5px solid rgba(105,255,0,.5)"
@@ -305,11 +302,6 @@ export default function GenerateVariants({ sources, platform, revisionBrief, ass
                         </span>
                       )}
                     </div>
-                    {notCharged && (
-                      <div className="mx-3 mt-2 rounded-lg border border-[rgba(255,194,61,.32)] bg-[rgba(255,194,61,.07)] px-3 py-1.5 text-[11px] font-bold text-[#e8cf9a]">
-                        Scored below your original - this one&apos;s free, credit refunded.
-                      </div>
-                    )}
                     <div className="relative mt-2 overflow-hidden">
                       {/* eslint-disable-next-line @next/next/no-img-element -- base64 AI output rendered inline */}
                       <img

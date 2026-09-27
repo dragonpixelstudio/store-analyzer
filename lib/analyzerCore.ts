@@ -432,7 +432,7 @@ export function getReviewMode(hasIcon: boolean, nonIconCount: number): ReviewMod
 
 const REVIEW_MODE_LABEL: Record<ReviewMode, string> = {
   iconOnly: "Icon only",
-  assetOnly: "No icon",
+  assetOnly: "Artwork review",
   fullStoreSet: "Full store set",
 };
 
@@ -440,7 +440,7 @@ const REVIEW_MODE_NOTE: Record<ReviewMode, string> = {
   iconOnly:
     "This review focuses on icon performance. Gameplay clarity needs screenshots, and marketing confidence is partial until the full store set is uploaded - the icon is not being penalised for assets that weren't provided.",
   assetOnly:
-    "This review focuses on the uploaded assets. Shelf readability and marketing confidence are partial until an icon is added.",
+    "This review covers the uploaded artwork. Icon shelf readability is not assessed without an icon; gameplay clarity is assessed only from screenshots.",
   fullStoreSet: "Full review across your icon and the other store assets.",
 };
 
@@ -690,119 +690,21 @@ function pushUniqueFix(out: DragonPixelFix[], fix: DragonPixelFix) {
   out.push({ action, why: fix.why.trim(), change: fix.change.trim() });
 }
 
-// The UI promises "Top 3 actions"; a usable asset should always get three.
-// Model output is used first, then padded with deterministic, mode-aware
-// fixes so the list is never short.
-function completeTopFixes(
-  fixes: DragonPixelFix[],
-  reviewMode: ReviewMode,
-  obs: Observations
-): DragonPixelFix[] {
+// Return only supported findings. Never invent actions to fill a fixed-size UI.
+function completeTopFixes(fixes: DragonPixelFix[], reviewMode: ReviewMode, obs: Observations): DragonPixelFix[] {
   const out: DragonPixelFix[] = [];
-  fixes.forEach((fix) => pushUniqueFix(out, fix));
-
-  if (reviewMode === "iconOnly") {
-    const visible = dedupeList(obs.shelfTest?.visibleElements);
-    const lost = dedupeList(obs.shelfTest?.lostElements);
-    const primary = obs.shelfTest?.dominantElement || visible[0] || "the main icon subject";
-    pushUniqueFix(out, {
-      action: "Commit to one clear icon pattern.",
-      why: "High-performing game icons sell one dominant character, object, threat, reward, or brand mark. Several equal abstract elements read as less memorable.",
-      change: `Make ${primary} the unmistakable hero and reduce secondary effects so the icon has one clear read.`,
-    });
-    pushUniqueFix(out, {
-      action: "Optimize the icon for 32px readability.",
-      why: "Small store icons lose thin trails, tiny sparks, soft glow, and subtle edges first.",
-      change: "Enlarge the primary shapes, thicken the readable silhouette, and remove fine background details that vanish at thumbnail size.",
-    });
-    pushUniqueFix(out, {
-      action: "Strengthen the gameplay signal without adding text.",
-      why: "Game icons usually do not need the game name; the image should imply action, danger, reward, or the core mechanic.",
-      change: "Show one clearer subject-versus-obstacle, threat, or reward relationship while keeping the same style.",
-    });
-    if (lost.length > 0) {
-      pushUniqueFix(out, {
-        action: "Remove details that fail the shelf test.",
-        why: `The weakest small-size elements are: ${lost.slice(0, 3).join(", ")}.`,
-        change: "Delete or merge these into larger readable shapes instead of leaving them as separate visual noise.",
-      });
-    }
-  } else {
-    pushUniqueFix(out, {
-      action: "Make the main gameplay action readable first.",
-      why: "Store assets convert better when the player can understand the action or objective within a few seconds.",
-      change: "Increase the scale and contrast of the player, action, reward, or threat before adding decorative effects.",
-    });
-    pushUniqueFix(out, {
-      action: "Use one clear marketing message per asset.",
-      why: "Multiple competing messages weaken thumbnail readability and reduce click clarity.",
-      change: "Keep one headline or focal idea, then remove visual elements that do not support it.",
-    });
-    pushUniqueFix(out, {
-      action: "Improve store-scale contrast.",
-      why: "Assets are judged in small grids before users ever see them full-size.",
-      change: "Increase foreground/background separation and simplify busy areas near the focal point.",
-    });
-  }
-
-  const guaranteedFallbacks: DragonPixelFix[] =
-    reviewMode === "iconOnly"
-      ? [
-          {
-            action: "Tighten the focal read.",
-            why: "Icons win when one subject dominates immediately at small size.",
-            change:
-              "Scale the main subject up, tighten the crop, and reduce competing secondary effects.",
-          },
-          {
-            action: "Clean up thumbnail noise.",
-            why: "Thin trails, sparks, and soft background detail disappear first at store size.",
-            change:
-              "Remove or merge low-value tiny details so the icon holds up at 32px.",
-          },
-          {
-            action: "Improve subject separation.",
-            why: "A stronger figure/ground split makes the icon read faster on a crowded shelf.",
-            change:
-              "Increase edge contrast and simplify the background around the focal subject.",
-          },
-        ]
-      : [
-          {
-            action: "Clarify the main selling message.",
-            why: "The user should understand the core action or hook immediately.",
-            change: "Make the player action, threat, reward, or objective read first.",
-          },
-          {
-            action: "Reduce competing visual noise.",
-            why: "Too many equal elements weaken conversion clarity.",
-            change: "Remove non-essential elements that compete with the focal point.",
-          },
-          {
-            action: "Strengthen hierarchy and contrast.",
-            why: "Store assets are judged quickly and often at small size.",
-            change:
-              "Push the main focal subject forward and separate it more clearly from the background.",
-          },
-        ];
-
-  for (const fix of guaranteedFallbacks) {
+  fixes.filter(fix => fix.change.trim() && fix.why.trim()).forEach(fix => pushUniqueFix(out, fix));
+  // A ranked summary already covers the priorities; per-asset briefs stay in the editor handoff.
+  if (out.length) return out.slice(0, 3);
+  for (const review of obs.assetReview || []) {
     if (out.length >= 3) break;
-    pushUniqueFix(out, fix);
+    if (!review.mainIssue.trim() || !review.bestFix.trim()) continue;
+    pushUniqueFix(out, { action: review.bestFix, why: review.mainIssue, change: review.revisionBrief || review.bestFix });
   }
-
-  while (out.length < 3) {
-    out.push({
-      action: `Additional priority fix ${out.length + 1}`,
-      why: "The UI requires three ranked actions.",
-      change:
-        reviewMode === "iconOnly"
-          ? "Tighten the focal subject, simplify clutter, and improve small-size readability."
-          : "Clarify the focal message, improve contrast, and simplify the composition.",
-    });
+  if (!out.length && reviewMode === "iconOnly" && obs.shelfTest?.smallSizeRisk === true && (obs.shelfTest.lostElements?.length || 0) > 0) {
+    pushUniqueFix(out, { action: "Simplify details lost at small size", why: obs.shelfTest!.lostElements!.slice(0,3).join(", "), change: "Simplify the identified details while preserving the original subject and silhouette." });
   }
-
-  return out.slice(0, 3);
+  return out.slice(0,3);
 }
 
 export function clientReadout(obs: Observations) {
@@ -851,7 +753,7 @@ function computeConversionRisk(
       level: "Needs screenshots",
       position: 50,
       reason:
-        "Click pull is readable from the icon, but whether those clicks convert depends on gameplay clarity - add screenshots to gauge it.",
+        "Artwork can communicate visual appeal, but gameplay clarity needs real screenshots. This review does not measure clicks, installs or sales.",
     };
   }
 
@@ -870,13 +772,13 @@ function computeConversionRisk(
 
   let reason: string;
   if (level === "Low") {
-    reason = `Clarity (${gameplayClarity}) keeps up with pull (${clickPull}) - clicks should convert. Focus on raising visual excitement.`;
+    reason = `Clarity (${gameplayClarity}) keeps up with pull (${clickPull}) - the visual message is relatively clear. Validate actual conversion with audience testing.`;
   } else if (level === "Medium") {
-    reason = `Solid pull (${clickPull}) with workable clarity (${gameplayClarity}). Some clicks may not convert until the gameplay reads faster.`;
+    reason = `Solid pull (${clickPull}) with workable clarity (${gameplayClarity}). Test whether players understand the main action at a glance.`;
   } else if (level === "Medium-high") {
-    reason = `Strong pull (${clickPull}) but mediocre clarity (${gameplayClarity}). Players click for the visuals and may leave before they understand the game - paid clicks risk not converting.`;
+    reason = `Strong pull (${clickPull}) but mediocre clarity (${gameplayClarity}). The visual hook and gameplay explanation may be mismatched; verify with real players.`;
   } else {
-    reason = `Clarity (${gameplayClarity}) is low. Even strong pull (${clickPull}) won't convert if players can't tell what the game is at a glance.`;
+    reason = `Clarity (${gameplayClarity}) is low. Visual pull (${clickPull}) alone cannot explain the game. Review the player action and objective.`;
   }
 
   return { assessed: true, level, position, reason };
@@ -886,12 +788,12 @@ function computeStoreImpact(
   risk: ConversionRisk
 ): { headline: string; tone: "good" | "warn" | "bad" } {
   if (!risk.assessed)
-    return { headline: "Add screenshots to gauge install risk", tone: "warn" };
+    return { headline: "Add screenshots to assess gameplay communication", tone: "warn" };
   if (risk.level === "Low")
-    return { headline: "Converting clicks well", tone: "good" };
+    return { headline: "Clear visual communication", tone: "good" };
   if (risk.level === "Medium")
-    return { headline: "Some installs at risk", tone: "warn" };
-  return { headline: "Likely losing installs", tone: "bad" };
+    return { headline: "Some communication gaps", tone: "warn" };
+  return { headline: "Significant communication gaps", tone: "bad" };
 }
 
 export type ShipDecision = {
@@ -911,9 +813,9 @@ function computeShipDecision(
   const weak = score < 55;
 
   if (reviewMode === "fullStoreSet") {
-    if (strong) return { label: "SHIP", tone: "good", sub: "Strong across the store set." };
-    if (weak) return { label: "DO NOT SHIP", tone: "bad", sub: "Rework before launch." };
-    return { label: "FIX BEFORE SHIPPING", tone: "warn", sub: "Close the conversion gaps first." };
+    if (strong) return { label: "STRONG VISUAL SIGNALS", tone: "good", sub: "Validate this direction with players." };
+    if (weak) return { label: "NEEDS REWORK", tone: "bad", sub: "Review the supported issues below." };
+    return { label: "ROOM TO IMPROVE", tone: "warn", sub: "Prioritize the clearest communication gaps." };
   }
 
   // partial input - name the missing piece honestly
@@ -923,10 +825,10 @@ function computeShipDecision(
     return {
       label: `STRONG ${reviewNoun.toUpperCase()}`,
       tone: "good",
-      sub: `Add ${missing} for a full ship call.`,
+      sub: `Add ${missing} for a broader visual review.`,
     };
-  if (weak) return { label: "DO NOT SHIP", tone: "bad", sub: `Rework the ${lower}.` };
-  return { label: "FIX BEFORE SHIPPING", tone: "warn", sub: `The ${lower} needs work first.` };
+  if (weak) return { label: "NEEDS REWORK", tone: "bad", sub: `Review the ${lower} findings below.` };
+  return { label: "ROOM TO IMPROVE", tone: "warn", sub: `Review the suggested changes to the ${lower}.` };
 }
 
 // What the observations would look like if every listed visual fix landed:
@@ -1271,7 +1173,7 @@ export function calculateDragonPixelScores(
   const weakWord = weakestScore < 62 ? "weak" : "softer";
   const summaryLine =
     strongest && weakest && strongest !== weakest
-      ? `Strong ${strongest.toLowerCase()}, ${weakWord} ${weakest.toLowerCase()}.`
+      ? `Highest signal: ${strongest.toLowerCase()}. ${weakWord === "weak" ? "Needs attention" : "Lower signal"}: ${weakest.toLowerCase()}.`
       : obs.finalCall || "";
   const strengths = (iconOnlyReview ? iconSafeList(obs.whatWorks) : dedupeList(obs.whatWorks)).slice(0, 3);
   const weaknesses = (iconOnlyReview ? iconSafeList(obs.whatHurtsConversion) : dedupeList(obs.whatHurtsConversion)).slice(0, 3);

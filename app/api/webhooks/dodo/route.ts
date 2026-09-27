@@ -1,258 +1,83 @@
+import { boundedText } from "@/lib/requestBody";
 import { NextRequest, NextResponse } from "next/server";
-import { createHmac, timingSafeEqual } from "crypto";
-import { emailKey, getCreditStore, type AccountPlan } from "@/lib/credits";
+import { billingStore, type Payment } from "@/lib/billingStore";
+import { productGrants } from "@/lib/billingCatalog";
+import { dodoRequest, isRecord, paymentItems, verifyDodoSignature } from "@/lib/dodo";
+import { emailKey } from "@/lib/credits";
 
 export const runtime = "nodejs";
-
-type Grant = { plan?: AccountPlan; credits: number };
-type UnknownRecord = Record<string, unknown>;
-
-function productGrants(): Record<string, Grant> {
-  const map: Record<string, Grant> = {};
-  const add = (envName: string, grant: Grant) => {
-    const id = process.env[envName];
-    if (id) map[id] = grant;
-  };
-  add("DODO_PRODUCT_INDIE", { plan: "indie", credits: 50 });
-  add("DODO_PRODUCT_PRO", { plan: "pro", credits: 200 });
-  add("DODO_PRODUCT_QUICKFIX", { credits: 6 });
-  add("DODO_PRODUCT_TOPUP_25", { credits: 25 });
-  add("DODO_PRODUCT_TOPUP_100", { credits: 100 });
-  add("DODO_PRODUCT_TOPUP_250", { credits: 250 });
-  return map;
-}
-
-function isRecord(value: unknown): value is UnknownRecord {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function readPath(value: unknown, path: string[]): unknown {
-  let cur = value;
-  for (const key of path) {
-    if (!isRecord(cur)) return undefined;
-    cur = cur[key];
-  }
-  return cur;
-}
-
-function stringAt(value: unknown, paths: string[][]): string | null {
-  for (const path of paths) {
-    const v = readPath(value, path);
-    if (typeof v === "string" && v.trim()) return v.trim();
-  }
-  return null;
-}
-
-function collectProductIds(value: unknown, out = new Set<string>()): Set<string> {
-  if (Array.isArray(value)) {
-    for (const item of value) collectProductIds(item, out);
-    return out;
-  }
-  if (!isRecord(value)) return out;
-
-  for (const [key, item] of Object.entries(value)) {
-    if (key === "product_id" && typeof item === "string" && item.trim()) {
-      out.add(item.trim());
-      continue;
-    }
-    if (key === "product_cart" || key === "items" || key === "line_items" || isRecord(item) || Array.isArray(item)) {
-      collectProductIds(item, out);
-    }
-  }
-  return out;
-}
-
-function verifySignature(rawBody: string, req: NextRequest): boolean {
-  const secretRaw = process.env.DODO_PAYMENTS_WEBHOOK_SECRET;
-  if (!secretRaw) return false;
-
-  const id = req.headers.get("webhook-id");
-  const timestamp = req.headers.get("webhook-timestamp");
-  const signatureHeader = req.headers.get("webhook-signature");
-  if (!id || !timestamp || !signatureHeader) return false;
-
-  const ts = Number(timestamp);
-  if (!Number.isFinite(ts) || Math.abs(Date.now() / 1000 - ts) > 300) return false;
-
-  const key = secretRaw.startsWith("whsec_")
-    ? Buffer.from(secretRaw.slice(6), "base64")
-    : Buffer.from(secretRaw, "utf8");
-
-  const expected = createHmac("sha256", key)
-    .update(`${id}.${timestamp}.${rawBody}`)
-    .digest("base64");
-  const expectedBuf = Buffer.from(expected);
-
-  for (const part of signatureHeader.split(" ")) {
-    const sig = part.includes(",") ? part.split(",")[1] : part;
-    if (!sig) continue;
-    const sigBuf = Buffer.from(sig);
-    if (sigBuf.length === expectedBuf.length && timingSafeEqual(sigBuf, expectedBuf)) {
-      return true;
-    }
-  }
-  return false;
-}
-
-function eventType(event: unknown): string {
-  return (
-    stringAt(event, [["type"], ["event_type"], ["payload_type"], ["data", "payload_type"]]) ?? ""
-  );
-}
-
-function collectMetadata(value: unknown, out: UnknownRecord[] = []): UnknownRecord[] {
-  if (Array.isArray(value)) {
-    for (const item of value) collectMetadata(item, out);
-    return out;
-  }
-
-  if (!isRecord(value)) return out;
-
-  const metadata = value.metadata;
-  if (isRecord(metadata)) out.push(metadata);
-
-  for (const item of Object.values(value)) {
-    if (isRecord(item) || Array.isArray(item)) collectMetadata(item, out);
-  }
-
-  return out;
-}
-
-function extractMetadata(event: unknown): UnknownRecord {
-  // Dodo webhook payload shapes can differ by event type. Search recursively for
-  // metadata so checkout-session metadata still works when nested under payment,
-  // subscription, payload, object, or line-item containers.
-  return Object.assign({}, ...collectMetadata(event));
-}
-
-function extractAccountKey(event: unknown): string | null {
-  const metadata = extractMetadata(event);
-  const key = metadata.dpx_account_key;
-  if (typeof key === "string" && /^(acct|em):[A-Za-z0-9:_-]+$/.test(key)) {
-    return key;
-  }
-  return null;
-}
-
-function extractEmail(event: unknown): string | null {
-  const email = stringAt(event, [
-    ["data", "customer", "email"],
-    ["data", "object", "customer", "email"],
-    ["data", "customer_email"],
-    ["data", "object", "customer_email"],
-    ["data", "email"],
-    ["data", "object", "email"],
-    ["data", "payment", "customer", "email"],
-    ["data", "subscription", "customer", "email"],
-  ]);
-
-  return email && /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) ? email : null;
-}
-
-function extractCustomerKey(event: unknown): string | null {
-  return extractAccountKey(event) ?? (extractEmail(event) ? emailKey(extractEmail(event)!) : null);
-}
-
-function extractProductIds(event: unknown): string[] {
-  return [...collectProductIds(event)];
-}
-
+export const maxDuration = 30;
 export async function POST(req: NextRequest) {
-  const rawBody = await req.text();
-
-  if (!verifySignature(rawBody, req)) {
-    return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
-  }
-
-  let event: unknown;
+  const raw = await boundedText(req, 1048576).catch(() => null);
+  if (raw === null) return NextResponse.json({ error: "Payload too large" }, { status: 413 });
+  if (Buffer.byteLength(raw) > 1048576) return NextResponse.json({ error: "Payload too large" }, { status: 413 });
+  if (!verifyDodoSignature(raw, req.headers, process.env.DODO_PAYMENTS_WEBHOOK_SECRET || "")) return NextResponse.json({ error: "Invalid signature" }, { status: 401 });
+  const event: unknown = (() => { try { return JSON.parse(raw); } catch { return null; } })();
+  if (!isRecord(event) || typeof event.type !== "string" || !isRecord(event.data)) return NextResponse.json({ error: "Invalid event" }, { status: 400 });
+  const data = event.data;
+  const type = event.type;
+  if (!["payment.succeeded", "payment.failed", "payment.cancelled", "refund.succeeded", "subscription.active", "subscription.renewed", "subscription.expired", "subscription.failed", "subscription.revoked"].includes(type)) return NextResponse.json({ received: true, ignored: true });
   try {
-    event = JSON.parse(rawBody) as unknown;
-  } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
-  }
-
-  const store = getCreditStore();
-  const webhookId = req.headers.get("webhook-id") || stringAt(event, [["id"], ["event_id"]]) || rawBody.slice(0, 64);
-  const onceKey = `wh:${webhookId}`;
-  const firstTime = await store.markOnce(onceKey, 60 * 60 * 24 * 30);
-  if (!firstTime) {
-    return NextResponse.json({ received: true, duplicate: true });
-  }
-
-  const type = eventType(event);
-  const key = extractCustomerKey(event);
-  const productIds = extractProductIds(event);
-  const grants = productGrants();
-  const matchedProductIds = productIds.filter((productId) => grants[productId]);
-
-  if (!key) {
-    console.warn(`dodo webhook ${type}: no account metadata or customer email in payload`);
-    await store.clearOnce(onceKey).catch(() => undefined);
-    return NextResponse.json({ error: "Webhook payload missing customer key" }, { status: 422 });
-  }
-
-  if (matchedProductIds.length === 0) {
-    console.warn(`dodo webhook ${type}: no matching configured product id`, { productIds });
-  }
-
-  try {
-    switch (type) {
-      case "subscription.active":
-      case "subscription.renewed": {
-        for (const productId of productIds) {
-          const grant = grants[productId];
-          if (!grant) continue;
-          if (grant.plan) await store.setPlan(key, grant.plan);
-          if (grant.credits > 0) await store.addCredits(key, grant.credits);
-          console.log(`dodo ${type}: ${key} -> plan=${grant.plan ?? "-"} +${grant.credits} credits`);
+    const store = billingStore();
+    // Honor delivery markers written by the previous implementation during migration.
+    const legacySeen = await store.redis.get(store.key("once", `wh:${req.headers.get("webhook-id")}`));
+    if (legacySeen) return NextResponse.json({ received: true, duplicate: true });
+    if (type === "payment.failed" || type === "payment.cancelled") {
+      const metadata = isRecord(data.metadata) ? data.metadata : {};
+      if (typeof metadata.dpx_order_id !== "string" || typeof metadata.dpx_account_key !== "string") return NextResponse.json({ received: true, ignored: true });
+      const changed = await store.markCheckoutInterrupted(metadata.dpx_order_id, metadata.dpx_account_key, type === "payment.failed" ? "failed" : "cancelled");
+      if (changed < 0) throw new Error("Checkout failure owner mismatch");
+    } else if (type === "refund.succeeded") {
+      if (typeof data.refund_id !== "string" || typeof data.payment_id !== "string") throw new Error("Refund identifiers missing");
+      const payment = await store.getPayment(data.payment_id);
+      if (!payment) throw new Error("Refund arrived before payment; retry required");
+      if (data.currency && data.currency !== payment.currency) throw new Error("Refund currency mismatch");
+      const amount = typeof data.amount === "number" ? data.amount : data.is_partial === false ? null : NaN;
+      await store.settleRefund(data.refund_id, payment, amount);
+    } else {
+      const metadata = isRecord(data.metadata) ? data.metadata : {};
+      const customer = isRecord(data.customer) ? data.customer : {};
+      const account = typeof metadata.dpx_account_key === "string" && /^(acct|em):[A-Za-z0-9_-]{20,64}$/.test(metadata.dpx_account_key)
+        ? metadata.dpx_account_key : typeof customer.email === "string" ? emailKey(customer.email) : null;
+      const grants = productGrants();
+      let items = paymentItems(data);
+      if (!items.length && typeof data.product_id === "string") items = [{ id: data.product_id, quantity: 1 }];
+      // Subscription payments identify the subscription; resolve its canonical product.
+      if (!items.length && typeof data.subscription_id === "string" && type === "payment.succeeded") {
+        const subscription = await dodoRequest(`/subscriptions/${encodeURIComponent(data.subscription_id)}`);
+        if (typeof subscription.product_id === "string") items = [{ id: subscription.product_id, quantity: 1 }];
+      }
+      const matched = items.filter(item => grants[item.id]);
+      if (!matched.length) {
+        if (metadata.dpx_order_id || metadata.dpx_source) throw new Error("Store product configuration missing");
+        return NextResponse.json({ received: true, ignored: true });
+      }
+      if (!account) throw new Error("Account identity missing");
+      if (type === "payment.succeeded") {
+        if (typeof data.payment_id !== "string" || typeof data.currency !== "string" || typeof data.total_amount !== "number") throw new Error("Payment fields missing");
+        const credits = matched.reduce((sum, item) => sum + grants[item.id].credits * item.quantity, 0);
+        const orderId = typeof metadata.dpx_order_id === "string" ? metadata.dpx_order_id : undefined;
+        // Legacy deliveries lack permanent payment IDs in the old ledger. Never
+        // mint again from a replay: reconcile old receipts before migrating them.
+        if (await store.getPayment(data.payment_id)) return NextResponse.json({ received: true, duplicate: true });
+        if (!orderId) throw new Error("Legacy payment requires reconciliation before credit migration");
+        if (orderId) {
+          const order = await store.getOrder(orderId);
+          if (!order || items.length !== 1 || items[0].id !== order.productId || items[0].quantity !== 1) throw new Error("Checkout product mismatch");
         }
-        break;
+        const payment: Payment = { id: data.payment_id, accountKey: account, credits, amount: data.total_amount, currency: data.currency, orderId, refundedAmount: 0, revokedCredits: 0 };
+        await store.settlePayment(payment);
+      } else {
+        // Subscription lifecycle changes plan only; payment.succeeded is the sole credit grant.
+        const plan = type === "subscription.active" || type === "subscription.renewed" ? matched.map(item => grants[item.id].plan).find(Boolean) : "free";
+        const stamp = typeof event.timestamp === "string" ? Date.parse(event.timestamp) : NaN;
+        if (!Number.isFinite(stamp) || typeof data.subscription_id !== "string" || !plan) throw new Error("Subscription event fields missing");
+        await store.redis.eval(`local old=redis.call('GET',KEYS[1]); if old then local s=cjson.decode(old); if s.at>tonumber(ARGV[1]) or (ARGV[3]=='free' and s.id~=ARGV[2]) then return 0 end end redis.call('SET',KEYS[1],cjson.encode({at=tonumber(ARGV[1]),id=ARGV[2]})); redis.call('SET',KEYS[2],ARGV[3]); return 1`, [store.key("subscription-state", account), store.key("plan", account)], [stamp, data.subscription_id, plan]);
       }
-
-      // Keep cancelled subscriptions active until Dodo sends an end-state event.
-      // Some providers emit cancellation immediately when the user disables renewal.
-      case "subscription.cancelled":
-      case "subscription.canceled": {
-        console.log(`dodo ${type}: ${key} renewal cancelled; keeping current plan until expiry`);
-        break;
-      }
-
-      case "subscription.expired":
-      case "subscription.failed":
-      case "subscription.revoked": {
-        await store.setPlan(key, "free");
-        console.log(`dodo ${type}: ${key} -> plan=free`);
-        break;
-      }
-
-      case "payment.succeeded": {
-        for (const productId of productIds) {
-          const grant = grants[productId];
-          if (!grant || grant.plan) continue;
-          await store.addCredits(key, grant.credits);
-          console.log(`dodo payment.succeeded: ${key} +${grant.credits} credits (${productId})`);
-        }
-        break;
-      }
-
-      case "refund.succeeded": {
-        for (const productId of productIds) {
-          const grant = grants[productId];
-          if (!grant || grant.plan) continue;
-          await store.reserve(key, grant.credits);
-          console.log(`dodo refund.succeeded: ${key} -${grant.credits} credits`);
-        }
-        break;
-      }
-
-      default:
-        console.log(`dodo webhook unhandled type: ${type}`);
     }
-  } catch (err: unknown) {
-    await store.clearOnce(onceKey).catch(() => undefined);
-    console.error("dodo webhook processing error:", err instanceof Error ? err.message : err);
-    return NextResponse.json({ error: "Webhook processing failed" }, { status: 500 });
+    return NextResponse.json({ received: true });
+  } catch (error) {
+    console.error("Dodo webhook needs retry:", error instanceof Error ? error.message : "unknown");
+    return NextResponse.json({ error: "Event could not be reconciled; retry required" }, { status: 503 });
   }
-
-  return NextResponse.json({ received: true });
 }

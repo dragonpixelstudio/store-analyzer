@@ -10,15 +10,20 @@ const contentSecurityPolicy = [
   "font-src 'self' data:",
   "connect-src 'self'",
   "form-action 'self'",
-  "navigate-to 'self' https://launch.dragonpixelstudio.com https://www.dragonpixelstudio.com https://dragonpixelstudio.com",
+
   "base-uri 'self'",
   "object-src 'none'",
   "frame-ancestors 'none'",
-  "upgrade-insecure-requests",
+  ...(isDev ? [] : ["upgrade-insecure-requests"]),
 ].join("; ");
 
 const nextConfig: NextConfig = {
+  distDir: process.env.DPX_SANDBOX_BUILD === "1" ? ".next-sandbox" : ".next",
   poweredByHeader: false,
+  outputFileTracingExcludes: { "/*": [".env", ".env.*"] },
+  ...(process.env.DPX_HOST_PROVIDER === "netlify" ? {
+    outputFileTracingIncludes: { "/*": ["node_modules/@img/sharp-linux-x64/**/*", "node_modules/@img/sharp-libvips-linux-x64/**/*"] },
+  } : {}),
   async headers() {
     return [
       {

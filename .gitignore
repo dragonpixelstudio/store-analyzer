@@ -47,3 +47,8 @@ next-env.d.ts
 
 .vercel
 .env*
+
+/.next-sandbox/
+
+# Netlify local build and account linkage
+/.netlify/

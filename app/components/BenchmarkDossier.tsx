@@ -76,7 +76,7 @@ function ReportCard({
   return (
     <div
       className="rounded-2xl border border-[var(--edge)] p-6"
-      style={{ background: "linear-gradient(160deg,#11182a,#070b14)" }}
+      style={{ background: "var(--panel)" }}
     >
       <div className="mb-4 font-brand text-[11px] font-bold uppercase tracking-[.2em] text-[var(--muted)]">
         {title}
@@ -192,7 +192,7 @@ export default function BenchmarkDossier({
         const bestRef = measuredRefs[0]?.coverage32Pct ?? null;
 
         return (
-          <div className="mb-5 rounded-xl border border-[var(--edge)] bg-black/25 p-4">
+          <div className="mb-5 rounded-xl border border-[var(--edge)] bg-[var(--well)] p-4">
             <div className="text-[10px] font-bold uppercase tracking-[.14em] text-[var(--muted)]">
               How much subject survives at store size
             </div>
@@ -216,7 +216,7 @@ export default function BenchmarkDossier({
                   >
                     {row.label}
                   </span>
-                  <div className="h-3 flex-1 overflow-hidden rounded-md border border-[var(--edge)] bg-black/40">
+                  <div className="h-3 flex-1 overflow-hidden rounded-md border border-[var(--edge)] bg-[var(--well)]">
                     <div
                       className="h-full rounded-[2px]"
                       style={{
@@ -336,7 +336,7 @@ export default function BenchmarkDossier({
         </div>
       )}
 
-      <details className="mt-4 rounded-xl border border-dashed border-[var(--edge)] bg-black/20 px-4 py-3">
+      <details className="mt-4 rounded-xl border border-dashed border-[var(--edge)] bg-[var(--well)] px-4 py-3">
         <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-[.12em] text-[var(--faint)]">
           Evidence limits &amp; raw measurements
         </summary>

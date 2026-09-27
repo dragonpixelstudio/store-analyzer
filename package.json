@@ -9,19 +9,28 @@
     "lint": "eslint",
     "test": "playwright test",
     "test:visual": "playwright test tests/visual-regression.spec.ts",
-    "test:visual:update": "playwright test tests/visual-regression.spec.ts --update-snapshots"
+    "test:visual:update": "playwright test tests/visual-regression.spec.ts --update-snapshots",
+    "dev:sandbox": "node scripts/dev-sandbox.cjs",
+    "test:security": "playwright test --config=playwright.domain.config.ts",
+    "test:local": "node scripts/test-local.cjs",
+    "test:billing": "node scripts/test-billing.cjs",
+    "test:studio": "node scripts/test-studio-ui.cjs"
   },
   "dependencies": {
+    "@fontsource-variable/inter": "^5.3.0",
+    "@fontsource-variable/orbitron": "^5.3.0",
+    "@fontsource-variable/sora": "^5.3.0",
     "@google/genai": "^2.8.0",
+    "@phosphor-icons/react": "^2.1.10",
     "@upstash/ratelimit": "^2.0.8",
     "@upstash/redis": "^1.38.0",
     "@vercel/analytics": "^2.0.1",
-    "next": "^16.2.9",
+    "next": "^16.3.5",
     "openai": "^6.42.0",
     "react": "^19.2.4",
     "react-dom": "^19.2.4",
     "react-markdown": "^10.1.0",
-    "sharp": "^0.34.5"
+    "sharp": "^0.35.4"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
@@ -30,7 +39,7 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "eslint": "^9",
-    "eslint-config-next": "16.2.9",
+    "eslint-config-next": "^16.3.5",
     "tailwindcss": "^4",
     "typescript": "^5"
   }

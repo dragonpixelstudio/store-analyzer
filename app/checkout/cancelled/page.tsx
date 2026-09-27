@@ -3,7 +3,7 @@ import Link from "next/link";
 export default function CheckoutCancelledPage() {
   return (
     <main className="min-h-screen bg-[var(--background)] px-6 py-16 text-[var(--foreground)]">
-      <section className="mx-auto max-w-2xl rounded-2xl border border-[var(--edge)] bg-[#0d1423] p-6">
+      <section className="mx-auto max-w-2xl rounded-2xl border border-[var(--edge)] bg-[var(--well)] p-6">
         <p className="font-brand text-[12px] font-semibold uppercase tracking-[.16em] text-[var(--magenta)]">
           Checkout cancelled
         </p>

@@ -1,54 +1,26 @@
+import { accountRequestAllowed } from "@/lib/ratelimit";
+import { boundedJson } from "@/lib/requestBody";
+import { isRecord as isBodyRecord } from "@/lib/dodo";
 import { NextRequest, NextResponse } from "next/server";
-import {
-  CLAIM_COOKIE,
-  emailKey,
-  getCreditStore,
-  signClaim,
-} from "@/lib/credits";
+import { getCreditStore } from "@/lib/credits";
+import { sameOrigin, setWalletCookie, verifyRecovery } from "@/lib/wallet";
 
 export const runtime = "nodejs";
-
-// POST /api/account/claim  { email }
-// Links this browser to a purchase: if the email has a plan or credits from
-// a Dodo webhook, set the signed identity cookie so callerKey resolves to
-// the purchase account instead of the anonymous IP identity.
+// An email address is not proof of account ownership. Only a secret recovery code can link a wallet.
 export async function POST(req: NextRequest) {
-  let body: { email?: string };
+  if (!sameOrigin(req)) return NextResponse.json({ error: "Origin not allowed" }, { status: 403 });
+  const parsed = await boundedJson(req).catch(() => null);
+  const body = isBodyRecord(parsed) ? parsed : null;
+  const key = verifyRecovery(body?.recoveryCode);
+  if (!key) return NextResponse.json({ error: "Enter the complete wallet recovery code you saved before checkout." }, { status: 400 });
   try {
-    body = (await req.json()) as { email?: string };
+    if (!await accountRequestAllowed(req, true)) return NextResponse.json({ error: "Too many wallet requests. Please try again later." }, { status: 429 });
+    const store = getCreditStore();
+    const [plan, remaining] = await Promise.all([store.getPlan(key), store.getBalance(key)]);
+    const response = NextResponse.json({ account: { plan, isSubscriber: plan !== "free" }, credits: { remaining } });
+    setWalletCookie(response, key);
+    return response;
   } catch {
-    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
+    return NextResponse.json({ error: "Could not restore your wallet. Please retry." }, { status: 503 });
   }
-
-  const email = body.email?.trim().toLowerCase() ?? "";
-  if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-    return NextResponse.json({ error: "Enter a valid email address" }, { status: 400 });
-  }
-
-  const key = emailKey(email);
-  const store = getCreditStore();
-  const [plan, balance] = await Promise.all([store.getPlan(key), store.getBalance(key)]);
-
-  if (plan === "free" && balance <= 0) {
-    return NextResponse.json(
-      {
-        error:
-          "No purchase found for this email yet. Use the exact email from your checkout receipt; new purchases can take a minute to arrive.",
-      },
-      { status: 404 }
-    );
-  }
-
-  const res = NextResponse.json({
-    account: { plan, isSubscriber: plan === "indie" || plan === "pro" },
-    credits: { remaining: balance },
-  });
-  res.cookies.set(CLAIM_COOKIE, signClaim(key), {
-    httpOnly: true,
-    secure: process.env.NODE_ENV === "production",
-    sameSite: "lax",
-    maxAge: 60 * 60 * 24 * 365,
-    path: "/",
-  });
-  return res;
 }

@@ -1,29 +1,16 @@
 import { NextRequest, NextResponse } from "next/server";
 import { isFunnelEvent, recordEvent } from "@/lib/funnel";
-
+import { sameOrigin } from "@/lib/wallet";
+import { boundedJson } from "@/lib/requestBody";
+import { eventIpLimit, eventGlobalLimit, getClientIp } from "@/lib/ratelimit";
 export const runtime = "nodejs";
-
-// Fire-and-forget funnel beacon. Same-origin only and event name allow-listed.
-// Deliberately NOT rate-limited: a real session fires several events, and
-// throttling would undercount the exact funnel the experiment needs to measure.
-// At this traffic, same-origin + allowlist is sufficient.
 export async function POST(req: NextRequest) {
-  const origin = req.headers.get("origin");
-  const host = req.headers.get("host");
-  if (origin && host && !origin.endsWith(host)) {
-    return NextResponse.json({ ok: false }, { status: 403 });
-  }
-
-  let event: unknown;
-  try {
-    event = (await req.json())?.event;
-  } catch {
-    return NextResponse.json({ ok: false }, { status: 400 });
-  }
-  if (!isFunnelEvent(event)) {
-    return NextResponse.json({ ok: false }, { status: 400 });
-  }
-
+  if (!sameOrigin(req)) return NextResponse.json({ ok: false }, { status: 403 });
+  const body = await boundedJson(req, 1024).catch(() => null);
+  const event = body && typeof body === "object" && "event" in body ? body.event : null;
+  if (!isFunnelEvent(event)) return NextResponse.json({ ok: false }, { status: 400 });
+  const [ip, global] = await Promise.all([eventIpLimit.limit(getClientIp(req)), eventGlobalLimit.limit("global")]);
+  if (!ip.success || ip.reason === "timeout" || !global.success || global.reason === "timeout") return NextResponse.json({ ok: false }, { status: 429 });
   await recordEvent(event);
   return NextResponse.json({ ok: true });
 }

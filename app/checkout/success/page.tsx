@@ -1,97 +1,45 @@
 "use client";
-
 import Link from "next/link";
 import { useEffect, useState } from "react";
-
-type AccountStatus = {
-  account?: { plan?: string; isSubscriber?: boolean };
-  credits?: { remaining?: number };
-};
-
+import "../../wallet.css";
+type Status = { state?: string; credits?: number; remaining?: number; error?: string };
 export default function CheckoutSuccessPage() {
-  const [status, setStatus] = useState<AccountStatus | null>(null);
-  const [checks, setChecks] = useState(0);
-
+  const [status, setStatus] = useState<Status>({});
+  const [done, setDone] = useState(false);
+  const [attempt, setAttempt] = useState(0);
+  const [returnState, setReturnState] = useState("");
   useEffect(() => {
-    let cancelled = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    let stopped = false; let timer: ReturnType<typeof setTimeout>; let count = 0;
+    const params = new URL(window.location.href).searchParams;
+    const order = params.get("order");
+    // Return parameters are display hints only. Credits and successful payment
+    // confirmation always come from the authenticated server ledger.
+    const returned = params.get("status") || "";
+    const interrupted = ["failed", "cancelled", "canceled"].includes(returned);
 
     async function poll() {
-      let activatedNow = false;
+      if (!order) { setStatus({ error: "Open your original checkout link, or contact support with your receipt." }); setDone(true); return; }
+      let finished = false;
       try {
-        const res = await fetch("/api/account/status", { cache: "no-store" });
-        const data = (await res.json()) as AccountStatus;
-        if (!cancelled) {
-          setStatus(data);
-          const credits = data?.credits?.remaining ?? 0;
-          const plan = data?.account?.plan ?? "free";
-          activatedNow = credits > 3 || plan === "indie" || plan === "pro";
-        }
-      } catch {
-        // Keep polling; webhook delivery can lag for a few seconds.
-      } finally {
-        if (!cancelled) {
-          setChecks((n) => n + 1);
-          if (!activatedNow) timer = setTimeout(poll, 2000);
-        }
-      }
+        const response = await fetch(`/api/checkout/status?order=${encodeURIComponent(order)}`, { cache: "no-store" });
+        const result = await response.json();
+        if (stopped) return;
+        setReturnState(interrupted ? returned : "");
+        setStatus(result);
+        finished = ["paid", "refunded", "failed", "cancelled"].includes(result.state) || response.status === 404 || interrupted;
+      } catch { if (!stopped) setStatus({ error: "Could not check your payment yet. Please try again shortly." }); }
+      if (!stopped) { count++; if (finished || interrupted || count >= 20) setDone(true); else timer = setTimeout(poll, 3000); }
     }
-
-    void poll();
-    return () => {
-      cancelled = true;
-      if (timer) clearTimeout(timer);
-    };
-  }, []);
-
-  const credits = status?.credits?.remaining ?? 0;
-  const plan = status?.account?.plan ?? "free";
-  const activated = credits > 3 || plan === "indie" || plan === "pro";
-
-  return (
-    <main className="min-h-screen bg-[var(--background)] px-6 py-16 text-[var(--foreground)]">
-      <section className="mx-auto max-w-2xl rounded-2xl border border-[var(--edge)] bg-[#0d1423] p-6">
-        <p className="font-brand text-[12px] font-semibold uppercase tracking-[.16em] text-[var(--green)]">
-          Checkout complete
-        </p>
-        <h1 className="font-brand mt-3 text-[32px] font-black">Payment received.</h1>
-        <p className="mt-3 text-[15px] font-semibold leading-7 text-[var(--text-2)]">
-          Your plan or credits are applied automatically to this browser after the Dodo webhook lands.
-        </p>
-
-        <div className="mt-5 rounded-xl border border-[var(--edge)] bg-black/20 p-4 text-[14px] font-semibold text-[var(--text-2)]">
-          {activated ? (
-            <p>
-              Active now: <strong>{plan}</strong> · <strong>{credits}</strong> generation credits available.
-            </p>
-          ) : (
-            <p>
-              Waiting for payment confirmation… this usually takes a few seconds. Checks run: {checks}.
-            </p>
-          )}
-        </div>
-
-        <div className="mt-6 flex flex-wrap gap-3">
-          <Link
-            href="/"
-            className="font-brand inline-flex min-h-[46px] items-center justify-center rounded-xl bg-[var(--cyan)] px-5 text-[13px] font-black text-black transition hover:-translate-y-0.5"
-          >
-            Open analyzer
-          </Link>
-          <Link
-            href="/pricing"
-            className="font-brand inline-flex min-h-[46px] items-center justify-center rounded-xl border border-[var(--edge)] px-5 text-[13px] font-black text-[var(--foreground)] transition hover:-translate-y-0.5"
-          >
-            Back to pricing
-          </Link>
-        </div>
-
-        {!activated && checks > 15 && (
-          <p className="mt-4 rounded-lg border border-amber-400/30 bg-amber-400/10 px-3 py-2 text-[13px] font-semibold text-amber-200">
-            Still waiting. Check Vercel logs for /api/webhooks/dodo and confirm the Dodo webhook is enabled for payment.succeeded and subscription.active.
-          </p>
-        )}
-      </section>
-    </main>
-  );
+    void poll(); return () => { stopped = true; clearTimeout(timer); };
+  }, [attempt]);
+  const paid = status.state === "paid", refunded = status.state === "refunded";
+  const interrupted = !paid && !refunded && (["failed", "cancelled"].includes(status.state || "") || !!returnState);
+  const title = paid ? "Your credits are ready." : refunded ? "Purchase refunded." : interrupted ? "Checkout was not completed." : done ? "Payment not confirmed yet." : "Confirming your payment…";
+  return <main className="wallet-page"><section className="wallet-content wallet-success">
+    <p className="wallet-eyebrow">DRAGON PIXEL STUDIO</p><h1>{title}</h1>
+    <p>{paid ? `${status.credits} credits were added for this purchase. Your available balance is ${status.remaining} credits.` : refunded ? "The corresponding credits have been adjusted in your wallet." : interrupted ? "Checkout reported a declined or cancelled payment. You can return to your wallet to try again." : "Your balance updates only after payment confirmation."}</p>
+    {status.error && <p role="alert">{status.error}</p>}
+    {done && !paid && !refunded && <>{!interrupted && <p>If you have a payment receipt, keep it and contact support before paying again.</p>}<button type="button" onClick={() => { setDone(false); setAttempt(a => a + 1); }}>Check payment status</button></>}
+    <div><Link href="/">Open studio →</Link><Link href="/pricing">{interrupted ? "Return to wallet" : "View wallet"}</Link>{!paid && <Link href="/contact">Contact support</Link>}</div>
+  </section></main>;
 }

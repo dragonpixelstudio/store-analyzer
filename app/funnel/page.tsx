@@ -1,3 +1,4 @@
+import { notFound } from "next/navigation";
 import { readFunnel } from "@/lib/funnel";
 
 export const dynamic = "force-dynamic";
@@ -14,13 +15,21 @@ const EVENT_LABELS: Record<string, string> = {
   share_open: "Opened a shared report",
   loop_return: "Analyzed after a shared report (viral loop)",
   share_copy: "Copied a share link",
-  generate_click: "Started a paid generation",
+  generate_click: "Started a paid fix (Analyzer)",
+  gallery_generate: "Pressed Generate this",
+  studio_generate: "Studio image delivered",
+  studio_edit: "Studio edit delivered",
+  studio_score: "Scored a studio result",
+  studio_download: "Downloaded studio art",
+  shot_create: "Loaded real gameplay",
 };
 
 // Ordered funnel: each step's rate is measured against the step above it.
 const FUNNEL_ORDER = ["upload", "analyze_start", "analyze_success", "share_copy"] as const;
 
 export default async function FunnelPage({ searchParams }: { searchParams: Search }) {
+  // A query-string developer key is not suitable production admin authentication.
+  if (process.env.NODE_ENV === "production") notFound();
   const { key } = await searchParams;
   const expected = process.env.DEV_UNLIMITED_KEY;
 
@@ -56,7 +65,7 @@ export default async function FunnelPage({ searchParams }: { searchParams: Searc
             <div
               key={event}
               className="rounded-2xl border border-[var(--edge)] p-4"
-              style={{ background: "linear-gradient(160deg,#11182a,#070b14)" }}
+              style={{ background: "var(--panel)" }}
             >
               <div className="text-[10px] font-bold uppercase tracking-[.12em] text-[var(--faint)]">
                 {EVENT_LABELS[event]}
@@ -104,7 +113,7 @@ export default async function FunnelPage({ searchParams }: { searchParams: Searc
       <div className="mt-8 overflow-x-auto rounded-2xl border border-[var(--edge)]">
         <table className="w-full min-w-[640px] text-left text-[12.5px]">
           <thead>
-            <tr className="border-b border-[var(--edge)] bg-black/30">
+            <tr className="border-b border-[var(--edge)] bg-[var(--well)]">
               <th className="px-3 py-2 font-bold uppercase tracking-[.1em] text-[var(--faint)]">Day</th>
               {Object.keys(EVENT_LABELS).map((event) => (
                 <th key={event} className="px-3 py-2 text-right font-bold text-[var(--faint)]">

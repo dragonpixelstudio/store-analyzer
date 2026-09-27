@@ -1,3 +1,4 @@
+import { storagePrefix } from "@/lib/storageScope";
 import crypto from "node:crypto";
 import { redis } from "@/lib/ratelimit";
 import type { CalculatedReport, Observations } from "@/lib/analyzerCore";
@@ -8,7 +9,7 @@ import type { BenchmarkEvidence } from "@/lib/iconEvidence";
 // anonymous, addressable only by an unguessable id, and expire after 90 days.
 
 const REPORT_TTL_SECONDS = 60 * 60 * 24 * 90;
-const REPORT_KEY_PREFIX = "dpx:report:";
+const REPORT_KEY_PREFIX = `${storagePrefix()}report:`;
 
 export type StoredReportAsset = {
   label: string;

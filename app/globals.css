@@ -2,20 +2,28 @@
 
 /* Brand tokens — kept in sync with the marketing site for one identity. */
 :root {
-  --background: #070b12;
-  --surface: rgba(255, 255, 255, 0.03);
-  --surface-2: rgba(255, 255, 255, 0.045);
-  --foreground: #f4f7fb;
-  --text-2: #c8d1e0;
-  --text-3: #8f9ab0;
-  --text-4: #657089;
+  /* "Dusk" theme: deep indigo twilight instead of near-black. Neutral enough
+     to judge store-art color honestly, dark enough for neon accents to glow,
+     and cards sit visibly above the page instead of dissolving into it. */
+  --background: #171d3d;
+  --bg-deep: #121735;
+  --panel-hi: #272f5d;
+  --panel-lo: #1c2349;
+  --panel: linear-gradient(160deg, var(--panel-hi), var(--panel-lo));
+  --well: #151b3b;
+  --surface: rgba(255, 255, 255, 0.045);
+  --surface-2: rgba(255, 255, 255, 0.065);
+  --foreground: #f5f7ff;
+  --text-2: #d3daef;
+  --text-3: #a0abca;
+  --text-4: #7d89ab;
   --muted: var(--text-2);
   --faint: var(--text-3);
   --cyan: #18d7ff;
   --magenta: #ff46b8;
   --gold: #ffc23d;
   --green: #69ff00;
-  --edge: rgba(255, 255, 255, 0.08);
+  --edge: rgba(255, 255, 255, 0.12);
 }
 
 @theme inline {
@@ -54,16 +62,15 @@ body::before {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  /* Color wash + grid in one fixed layer: identical look to
-     background-attachment: fixed, but reliable on mobile browsers. */
+  /* Twilight sky: color washes + a light grid in one fixed layer (reliable on
+     mobile, unlike background-attachment: fixed). */
   background:
-    linear-gradient(rgba(255, 255, 255, 0.017) 1px, transparent 1px) 0 0 / 56px 56px,
-    linear-gradient(90deg, rgba(255, 255, 255, 0.017) 1px, transparent 1px) 0 0 / 56px 56px,
-    linear-gradient(rgba(24, 224, 255, 0.009) 1px, transparent 1px) 0 0 / 14px 14px,
-    linear-gradient(90deg, rgba(255, 61, 180, 0.007) 1px, transparent 1px) 0 0 / 14px 14px,
-    radial-gradient(circle at 80% 8%, rgba(255, 61, 180, 0.1), transparent 34%),
-    radial-gradient(circle at 12% 22%, rgba(24, 224, 255, 0.1), transparent 34%),
-    linear-gradient(135deg, var(--background) 0%, #0c1220 55%, #05070d 100%);
+    linear-gradient(rgba(255, 255, 255, 0.028) 1px, transparent 1px) 0 0 / 56px 56px,
+    linear-gradient(90deg, rgba(255, 255, 255, 0.028) 1px, transparent 1px) 0 0 / 56px 56px,
+    radial-gradient(circle at 82% 4%, rgba(255, 70, 184, 0.17), transparent 36%),
+    radial-gradient(circle at 10% 16%, rgba(24, 215, 255, 0.16), transparent 36%),
+    radial-gradient(ellipse at 50% 110%, rgba(124, 92, 255, 0.2), transparent 55%),
+    linear-gradient(165deg, #1e2553 0%, var(--background) 42%, var(--bg-deep) 100%);
 }
 
 body::after {
@@ -72,15 +79,14 @@ body::after {
   inset: 0;
   z-index: -1;
   pointer-events: none;
-  background:
-    radial-gradient(circle at center, transparent 0%, rgba(0,0,0,0.28) 78%),
-    repeating-linear-gradient(
-      0deg,
-      rgba(255,255,255,0.012) 0px,
-      rgba(255,255,255,0.012) 1px,
-      transparent 1px,
-      transparent 4px
-    );
+  /* Faint texture only - the old black vignette is gone. */
+  background: repeating-linear-gradient(
+    0deg,
+    rgba(255, 255, 255, 0.008) 0px,
+    rgba(255, 255, 255, 0.008) 1px,
+    transparent 1px,
+    transparent 4px
+  );
 }
 
 /* Sora for display headings and compact UI controls (use className="font-brand"). */
@@ -120,6 +126,12 @@ body::after {
   border-color: rgba(255, 70, 184, 0.32);
   background: linear-gradient(120deg, rgba(255, 70, 184, 0.1), rgba(255, 70, 184, 0.04));
   color: var(--magenta);
+}
+
+.dpx-kicker[data-tone="green"] {
+  border-color: rgba(105, 255, 0, 0.32);
+  background: linear-gradient(120deg, rgba(105, 255, 0, 0.1), rgba(105, 255, 0, 0.04));
+  color: var(--green);
 }
 
 /* Ambient motion — slow + low, tied to the upload panel and dropzone. */
@@ -375,7 +387,7 @@ body::after {
   background:
     linear-gradient(90deg, rgba(24, 224, 255, 0.08), transparent 28%),
     linear-gradient(160deg, rgba(255, 255, 255, 0.038), rgba(255, 255, 255, 0.012)),
-    linear-gradient(160deg, rgba(18, 18, 34, 0.96), rgba(5, 6, 15, 0.94));
+    var(--panel);
 }
 .dpx-step::before {
   content: "";

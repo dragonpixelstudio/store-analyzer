@@ -1,26 +1,22 @@
+import { accountRequestAllowed } from "@/lib/ratelimit";
 import { NextRequest, NextResponse } from "next/server";
 import { callerKey, ensureTrialSeed, getCreditStore, isDeveloperRequest } from "@/lib/credits";
+import { billingStore } from "@/lib/billingStore";
+import { sameOrigin, walletKey } from "@/lib/wallet";
 
 export const runtime = "nodejs";
-
-// Plan and credits are written by the Dodo Payments webhook
-// (app/api/webhooks/dodo/route.ts) into the durable credit store, keyed by
-// the purchaser's email hash. Browsers link to that account via
-// the checkout route, which sets the signed identity cookie that callerKey
-// resolves. This endpoint only reads; the frontend never decides
-// subscription state on its own.
 export async function GET(req: NextRequest) {
-  const key = callerKey(req);
-  await ensureTrialSeed(key, isDeveloperRequest(req));
-
-  const store = getCreditStore();
-  const [remaining, plan] = await Promise.all([
-    store.getBalance(key),
-    store.getPlan(key),
-  ]);
-
-  return NextResponse.json({
-    account: { plan, isSubscriber: plan === "indie" || plan === "pro" },
-    credits: { remaining },
-  });
+  if (req.headers.get("origin") && !sameOrigin(req)) return NextResponse.json({ error: "Origin not allowed" }, { status: 403 });
+  try {
+    if (!await accountRequestAllowed(req, false)) return NextResponse.json({ error: "Too many wallet requests. Please try again later." }, { status: 429 });
+    const key = callerKey(req);
+    await ensureTrialSeed(key, isDeveloperRequest(req));
+    const billing = billingStore();
+    await billing.recoverStaleGenerations(key);
+    const store = getCreditStore();
+    const [remaining, plan, history] = await Promise.all([store.getBalance(key), store.getPlan(key), billing.history(key)]);
+    return NextResponse.json({ account: { plan, isSubscriber: plan !== "free", hasWallet: !!walletKey(req) }, credits: { remaining }, history }, { headers: { "Cache-Control": "private, no-store" } });
+  } catch {
+    return NextResponse.json({ error: "Credit balance is temporarily unavailable. Please retry." }, { status: 503 });
+  }
 }

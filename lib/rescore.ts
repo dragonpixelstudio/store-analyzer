@@ -89,7 +89,7 @@ export async function rescoreSingleAsset(args: {
       { inlineData: { mimeType: normalized.mimeType, data: normalized.base64 } },
     ];
 
-    const ai = new GoogleGenAI({ apiKey: args.apiKey });
+    const ai = new GoogleGenAI({ apiKey: args.apiKey, httpOptions: { timeout: 20000 } });
 
     const runOnce = async (): Promise<RescoreResult | null> => {
       const response = await ai.models.generateContent({

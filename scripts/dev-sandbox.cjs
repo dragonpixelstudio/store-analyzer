@@ -1,0 +1,18 @@
+const fs = require('node:fs');
+const path = require('node:path');
+const { spawn } = require('node:child_process');
+const { loadEnvConfig } = require('@next/env');
+const root = path.resolve(__dirname, '..');
+loadEnvConfig(root, true);
+const cfgPath = process.env.DPX_SANDBOX_CONFIG || path.join(process.env.TEMP, 'dragonpixel-sandbox-config.json');
+const cfg = JSON.parse(fs.readFileSync(cfgPath, 'utf8'));
+const keyPath = process.env.DODO_SANDBOX_KEY_FILE || path.join(process.env.TEMP, 'dragonpixel-dodo-sandbox-key.txt');
+const key = fs.readFileSync(keyPath, 'utf8').trim();
+if (!cfg.walletSecret || !cfg.webhookSecret || !cfg.quickfix || !cfg.topup25 || !key) throw new Error('Sandbox configuration is incomplete.');
+const env = { ...process.env, NODE_ENV: 'development', DODO_PAYMENTS_ENVIRONMENT: 'test_mode', DODO_LIVE_PAYMENTS_ENABLED: 'false', DODO_PAYMENTS_API_KEY: key, DODO_PAYMENTS_WEBHOOK_SECRET: cfg.webhookSecret, CREDIT_SESSION_SECRET: cfg.walletSecret, DODO_PRODUCT_QUICKFIX: cfg.quickfix, DODO_PRODUCT_TOPUP_25: cfg.topup25, DODO_PRODUCT_TOPUP_100: '', DODO_PRODUCT_TOPUP_250: '', DODO_PRODUCT_INDIE: '', DODO_PRODUCT_PRO: '', DEV_UNLIMITED_KEY: '', APP_URL: 'http://127.0.0.1:3101', DPX_LOCAL_FIXTURES: '1', DPX_SANDBOX_BUILD: '1', GEMINI_API_KEY: 'local-fixtures-no-model-spend' };
+if (!env.UPSTASH_REDIS_REST_URL || !env.UPSTASH_REDIS_REST_TOKEN) throw new Error('The existing Redis configuration is required for isolated wallet tests.');
+console.log('LOCAL SANDBOX: http://127.0.0.1:3101 — sample images, Dodo Test Mode, separate wallet. No model charges.');
+const child = spawn(process.execPath, [require.resolve('next/dist/bin/next'), 'dev', '--hostname', '127.0.0.1', '--port', '3101'], { cwd: root, env, stdio: 'inherit', windowsHide: true });
+const relay = spawn(process.execPath, [path.join(__dirname, 'sandbox-relay.cjs')], { cwd: root, env, stdio: 'inherit', windowsHide: true });
+child.on('exit', code => { relay.kill(); process.exit(code || 0); });
+process.on('SIGINT', () => { relay.kill(); child.kill(); });
