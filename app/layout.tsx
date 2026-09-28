@@ -34,7 +34,7 @@ const orbitron = localFont({
 
 export const metadata: Metadata = {
   ...(process.env.DODO_PAYMENTS_ENVIRONMENT === "test_mode" ? { robots: { index: false, follow: false } } : {}),
-  title: "Dragon Pixel Store Studio - generate and score game store art",
+  title: "Studio | Dragon Pixel Studio",
   description:
     "Generate game icons and Steam capsules in one click, frame real gameplay into store screenshots, and score everything before you ship.",
 };
