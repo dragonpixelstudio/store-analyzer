@@ -123,3 +123,6 @@ body:has(.canvas-studio) > footer { background:#141618 !important; margin-top:0;
 .studio-analysis-result { margin-top:16px; }
 @media(max-width:1100px){.layered-grid{grid-template-columns:repeat(2,minmax(0,1fr));}}
 @media(max-width:540px){.layered-grid{grid-template-columns:1fr;}.layered-art{height:200px;}}
+
+/* Keep all three destinations and credits accessible on narrow screens. */
+@media(max-width:650px){.studio-topbar{display:grid;grid-template-columns:1fr auto;height:auto;min-height:0;gap:6px 16px;padding:12px 16px 0}.studio-topbar .studio-brand{width:124px;grid-column:1;grid-row:1}.studio-topbar .studio-top-actions{grid-column:2;grid-row:1;justify-self:end;margin-left:0}.studio-topbar nav{grid-column:1/-1;grid-row:2;justify-content:center;gap:32px;height:44px}.studio-topbar nav a{white-space:nowrap;font-size:13px}.studio-topbar nav a[aria-current]::after{bottom:0}}

@@ -1,3 +1,5 @@
+import { RedisCreditStore } from "../lib/credits";
+import { summarizeJob } from "../lib/jobSummary";
 import {test,expect} from "@playwright/test";
 import {randomUUID} from "node:crypto";
 import {Redis} from "@upstash/redis";
@@ -69,4 +71,38 @@ test("real Redis background jobs publish and settle atomically, prevent duplicat
   expect((await store.result(thrown.id))?.status).toBe(502);expect(await redis.get(billing.key("bal",account))).toBe(5);
   expect((await store.recent(account)).length).toBe(3);
  }finally{await redis.del(...keys);if(secret===undefined)delete process.env.DPX_JOB_SECRET;else process.env.DPX_JOB_SECRET=secret;if(origin===undefined)delete process.env.APP_URL;else process.env.APP_URL=origin;}
+});
+
+test("job summaries expose result links only for completed successful reviews",()=>{
+ const job={id:"a".repeat(64),kind:"analyze",state:"done",created:1} as ArtworkJob;
+ expect(summarizeJob(job,{status:502,body:JSON.stringify({error:"Failed",reportId:"wrong-report"})})).toMatchObject({outcome:"failed",reportId:undefined});
+ expect(summarizeJob(job,{status:200,body:JSON.stringify({reportId:"valid-report"})})).toMatchObject({outcome:"succeeded",reportId:"valid-report"});
+ expect(summarizeJob(job,null).outcome).toBe("unavailable");
+ expect(summarizeJob({...job,state:"running"},null).outcome).toBe("running");
+});
+
+test("Redis analysis reservations settle with publication, refund failures and recover worker timeouts",async()=>{
+ test.skip(process.env.RUN_REDIS_BILLING_TESTS!=="1","Opt-in isolated Redis integration");
+ loadEnvConfig(process.cwd());
+ const redis=Redis.fromEnv(),prefix="dpx:test:analysis:"+randomUUID()+":";
+ const store=new ArtworkJobStore(redis,prefix),credits=new RedisCreditStore(redis,prefix),account="acct:quota-test",network="ip:192.0.2.7",period="free:2026-10-05";
+ const make=(operation:string):ArtworkJob=>({id:jobId(account,"analyze",operation),account,operation,kind:"analyze",fingerprint:"sample",created:Date.now(),state:"queued",network:"192.0.2.7",contentType:"multipart/form-data",dispatched:0,attempts:0});
+ try{
+  const jobs=[make("failed-test-operation"),make("success-test-operation"),make("expired-test-operation")];
+  for(const job of jobs){await store.create(job,"input");await store.claim(job.id);expect((await credits.reserveReports([account,network],3,period,job.id)).success).toBe(true);}
+  expect((await credits.reserveReports([account,network],3,period,"extra")).success).toBe(false);
+  const failed=jobs[0],billing={account,operation:failed.operation};
+  await Promise.all([store.complete(failed,{status:502,body:'{"error":"Provider failed"}'},billing),store.complete(failed,{status:502,body:'{"error":"Provider failed"}'},billing)]);
+  expect(await redis.get(prefix+"rep:"+network+":"+period)).toBe(2);
+  expect((await store.get(failed.id))?.analysisReturned).toBe(true);
+  const good=jobs[1];await store.complete(good,{status:200,body:'{"reportId":"valid-report"}'},{account,operation:good.operation});
+  await credits.settleReports(good.id,false);expect(await redis.get(prefix+"rep:"+account+":"+period)).toBe(2);
+  const expired=jobs[2];await store.expire(expired,expired.created+600001);await store.expire(expired,expired.created+600002);
+  expect(await redis.get(prefix+"rep:"+network+":"+period)).toBe(1);
+  expect(await store.complete(expired,{status:200,body:'{}'},{account,operation:expired.operation},expired.created+600003)).toBe(0);
+  expect((await credits.reserveReports([account,network],3,period,expired.id)).success).toBe(false);
+  const late=make("late-reservation-operation");await store.create(late,"input");await store.claim(late.id);await store.expire(late,late.created+600001);
+  expect((await credits.reserveReports([account,network],3,period,late.id)).success).toBe(false);
+  expect(await redis.get(prefix+"rep:"+network+":"+period)).toBe(1);
+ }finally{let cursor=0;do{const page=await redis.scan(cursor,{match:prefix+"*",count:100});cursor=Number(page[0]);if(page[1].length)await redis.del(...page[1]);}while(cursor);}
 });

@@ -7,7 +7,7 @@ export type ArtworkJobKind = "analyze" | "studio" | "fix";
 export const JOB_PATHS: Record<ArtworkJobKind, string> = { analyze: "/api/analyze", studio: "/api/studio/generate", fix: "/api/fix" };
 export const JOB_TTL = 86400;
 export const JOB_DEADLINE = 10 * 60 * 1000;
-export type ArtworkJob = { id: string; account: string; operation: string; kind: ArtworkJobKind; fingerprint: string; created: number; state: "queued" | "running" | "done"; network: string; contentType: string; dispatched: number; attempts: number; charged?: number; refunded?: number };
+export type ArtworkJob = { id: string; account: string; operation: string; kind: ArtworkJobKind; fingerprint: string; created: number; state: "queued" | "running" | "done"; network: string; contentType: string; dispatched: number; attempts: number; charged?: number; refunded?: number; analysisReturned?: boolean };
 export type JobResult = { status: number; body: string; retryAfter?: string };
 export function jobId(account: string, kind: ArtworkJobKind, operation: string) { return createHash("sha256").update(`${account}:${kind}:${operation}`).digest("hex"); }
 export const validJobId = (id: string) => /^[a-f0-9]{64}$/.test(id);
@@ -47,6 +47,17 @@ if reserved>=0 then
  redis.call('LPUSH',KEYS[7],ARGV[5]); redis.call('LTRIM',KEYS[7],0,99)
  j.charged=charged; j.refunded=reserved-charged
 end
+
+local analysisRaw=redis.call('GET',KEYS[8])
+if analysisRaw then
+ local a=cjson.decode(analysisRaw)
+ if a.state=='pending' then
+  local success=cjson.decode(ARGV[2]).status>=200 and cjson.decode(ARGV[2]).status<300
+  if not success then for _,key in ipairs(a.counters) do if tonumber(redis.call('GET',key) or '0')>0 then redis.call('DECR',key) end end end
+  a.state=success and 'complete' or 'returned'; j.analysisReturned=not success
+  redis.call('SET',KEYS[8],cjson.encode(a),'KEEPTTL')
+ end
+end
 j.state='done'; redis.call('SET',KEYS[2],ARGV[2],'EX',86400)
 redis.call('SET',KEYS[1],cjson.encode(j),'KEEPTTL'); redis.call('DEL',KEYS[3]); return 1`;
 // Stalled jobs are never executed again. Refund a pending reservation, if any.
@@ -58,6 +69,17 @@ local opraw=redis.call('GET',KEYS[5]); if opraw then local op=cjson.decode(opraw
  redis.call('ZREM',KEYS[6],j.operation); redis.call('LPUSH',KEYS[7],ARGV[3]); redis.call('LTRIM',KEYS[7],0,99)
  j.charged=0; j.refunded=op.amount
 end end
+
+local analysisRaw=redis.call('GET',KEYS[8])
+if analysisRaw then
+ local a=cjson.decode(analysisRaw)
+ if a.state=='pending' then
+  local success=false
+  if not success then for _,key in ipairs(a.counters) do if tonumber(redis.call('GET',key) or '0')>0 then redis.call('DECR',key) end end end
+  a.state=success and 'complete' or 'returned'; j.analysisReturned=not success
+  redis.call('SET',KEYS[8],cjson.encode(a),'KEEPTTL')
+ end
+end
 j.state='done'; redis.call('SET',KEYS[1],cjson.encode(j),'KEEPTTL'); redis.call('SET',KEYS[2],ARGV[2],'EX',86400); redis.call('DEL',KEYS[3]); return 1`;
 
 export class ArtworkJobStore {
@@ -73,7 +95,7 @@ export class ArtworkJobStore {
   create(job: ArtworkJob, body: string) { return this.redis.eval<unknown[],number>(CREATE, [this.key("artwork-job",job.id),this.key("artwork-input",job.id),this.key("artwork-recent",job.account)], [JSON.stringify(job),body,job.fingerprint,job.created,job.id]); }
   claim(id: string, now = Date.now()) { return this.redis.eval<unknown[],number>(CLAIM,[this.key("artwork-job",id)],[now]); }
   dispatch(id: string, now = Date.now()) { return this.redis.eval<unknown[],number>(DISPATCH,[this.key("artwork-job",id)],[now]); }
-  private keys(job: ArtworkJob) { return [this.key("artwork-job",job.id),this.key("artwork-result",job.id),this.key("artwork-input",job.id),this.key("bal",job.account),this.key("op",`${job.account}:${job.operation}`),this.key("pending",job.account),this.key("ledger",job.account)]; }
+  private keys(job: ArtworkJob) { return [this.key("artwork-job",job.id),this.key("artwork-result",job.id),this.key("artwork-input",job.id),this.key("bal",job.account),this.key("op",`${job.account}:${job.operation}`),this.key("pending",job.account),this.key("ledger",job.account),this.key("analysis-reservation",job.id)]; }
   complete(job: ArtworkJob, result: JobResult, billing: JobBilling, now = Date.now()) {
     if(billing.account !== job.account || billing.operation !== job.operation) throw new Error("Result owner mismatch");
     const charged=billing.charged ?? 0;

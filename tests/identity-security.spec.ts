@@ -7,7 +7,7 @@ import { MemoryCreditStore, getCreditStore, signClaim, CLAIM_COOKIE, callerKey, 
 import { POST as analyze } from "../app/api/analyze/route";
 import { POST as prepareWallet } from "../app/api/account/recovery/route";
 import { GET as status } from "../app/api/account/status/route";
-import { ipRatelimit, walletWriteLimit, accountReadLimit, redis } from "../lib/ratelimit";
+import { ipRatelimit, globalRatelimit, walletWriteLimit, accountReadLimit, redis } from "../lib/ratelimit";
 
 test.describe.configure({ mode: "serial" });
 const initial = { ...process.env };
@@ -127,4 +127,39 @@ test("Netlify quotas use only its configured connection address across browser i
   const request = new Request("https://example.com", { headers: { "x-nf-client-connection-ip": "192.0.2.67" } });
   delete process.env.DPX_HOST_PROVIDER;
   expect(getClientIp(request)).toBe("unknown");
+});
+test("failed reviews return both counters once and cannot alter a later day's allowance", async()=>{
+  const store=new MemoryCreditStore(), day=new Date("2026-10-05T23:59:50Z"), tomorrow=new Date("2026-10-06T00:00:01Z");
+  const a=await reserveAnalysis(request(undefined,wallet),store,day);
+  const b=await reserveAnalysis(request(undefined,wallet),store,day);
+  const c=await reserveAnalysis(request(undefined,wallet),store,day);
+  await store.settleReports(a.reservation,true);
+  await Promise.all([store.settleReports(b.reservation,false),store.settleReports(b.reservation,false)]);
+  expect((await reserveAnalysis(request(undefined,undefined,"Edge"),store,day)).success).toBe(true);
+  expect((await reserveAnalysis(request(),store,day)).success).toBe(false);
+  await store.settleReports(a.reservation,false); // delivered reviews cannot be refunded later
+  expect((await reserveAnalysis(request(),store,day)).success).toBe(false);
+  for(let i=0;i<3;i++)expect((await reserveAnalysis(request(),store,tomorrow)).success).toBe(true);
+  await store.settleReports(c.reservation,false);
+  expect((await reserveAnalysis(request(),store,tomorrow)).success).toBe(false);
+  expect(await store.getBalance(wallet)).toBe(0);
+});
+
+test("actual analyzer returns a reserved review slot on capacity failure",async()=>{
+ Object.assign(process.env,{NODE_ENV:"development"});delete process.env.DPX_LOCAL_FIXTURES;
+ const store=getCreditStore(),memory=new MemoryCreditStore();
+ const old={plan:store.getPlan,reserve:store.reserveReports,settle:store.settleReports,ip:ipRatelimit.limit,global:globalRatelimit.limit,fetch:globalThis.fetch};
+ store.getPlan=async()=>"free";store.reserveReports=memory.reserveReports.bind(memory);store.settleReports=memory.settleReports.bind(memory);
+ ipRatelimit.limit=async()=>({success:true,limit:99,remaining:99,reset:Date.now()+60000,pending:Promise.resolve()});
+ globalRatelimit.limit=async()=>({success:false,limit:1,remaining:0,reset:Date.now()+60000,pending:Promise.resolve()});
+ globalThis.fetch=async(_url,init)=>{const commands=JSON.parse(String(init?.body));const reply=(command:string[])=>({result:command[0].toLowerCase()==="hgetall"?[]:null});return Response.json(Array.isArray(commands[0])?commands.map(reply):reply(commands));};
+ const bytes=await sharp({create:{width:32,height:32,channels:3,background:"blue"}}).png().toBuffer();
+ try{
+  for(let i=0;i<5;i++){
+   const form=new FormData();form.set("icon",new Blob([new Uint8Array(bytes)],{type:"image/png"}),"image.png");
+   const response=await analyze(new Request("http://localhost/api/analyze",{method:"POST",headers:{origin:"http://localhost"},body:form}));
+   expect(response.status).toBe(429);expect((await response.json()).error).toContain("daily capacity");
+  }
+  expect((await reserveAnalysis(request(),memory)).remaining).toBe(2);
+ }finally{store.getPlan=old.plan;store.reserveReports=old.reserve;store.settleReports=old.settle;ipRatelimit.limit=old.ip;globalRatelimit.limit=old.global;globalThis.fetch=old.fetch;}
 });

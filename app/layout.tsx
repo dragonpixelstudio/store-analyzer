@@ -6,6 +6,7 @@ import "./canvas-studio.css";
 import "./product-theme.css";
 import "./results-polish.css";
 import "./artwork-editor.css";
+import "./jobs.css";
 import { SiteFooter } from "@/app/components/SiteChrome";
 import { Analytics } from "@vercel/analytics/next";
 

@@ -16,7 +16,8 @@ export interface CreditStore {
   /** Atomic once-only marker (webhook idempotency). True if first time. */
   markOnce(id: string, ttlSeconds: number): Promise<boolean>;
   clearOnce(id: string): Promise<void>;
-  reserveReports(keys: string[], limit: number, periodKey: string): Promise<{ success: boolean; remaining: number }>;
+  settleReports(reservation: string, succeeded: boolean): Promise<void>;
+  reserveReports(keys: string[], limit: number, periodKey: string, reservation?: string): Promise<{ success: boolean; remaining: number }>;
   reserveReport(
     key: string,
     limit: number,
@@ -26,8 +27,29 @@ export interface CreditStore {
 
 const TRIAL_CREDITS = 3;
 
+// Reservation and counters are written together. Settlement is idempotent and
+// retains the original period, so a retry after midnight cannot refund today.
+export const SETTLE_REPORTS = `
+local raw=redis.call('GET',KEYS[1]); if not raw then return 0 end
+local r=cjson.decode(raw); if r.state~='pending' then return 0 end
+if ARGV[1]~='1' then
+ for _,key in ipairs(r.counters) do
+  if tonumber(redis.call('GET',key) or '0')>0 then redis.call('DECR',key) end
+ end
+end
+r.state=ARGV[1]=='1' and 'complete' or 'returned'
+redis.call('SET',KEYS[1],cjson.encode(r),'KEEPTTL'); return 1`;
+
+
 export const RESERVE_REPORTS = `
 local limit=tonumber(ARGV[1]); local used=0
+local reservation=ARGV[2]
+if reservation and reservation~='' and redis.call('EXISTS',reservation)==1 then return -1 end
+local jobkey=ARGV[3]
+if jobkey and jobkey~='' then
+ local raw=redis.call('GET',jobkey)
+ if not raw or cjson.decode(raw).state~='running' then return -1 end
+end
 for _,key in ipairs(KEYS) do
  local count=tonumber(redis.call('GET',key) or '0')
  if count>=limit then return -1 end
@@ -37,12 +59,14 @@ for _,key in ipairs(KEYS) do
  redis.call('INCR',key)
  if redis.call('TTL',key)<0 then redis.call('EXPIRE',key,3024000) end
 end
+if reservation and reservation~='' then redis.call('SET',reservation,cjson.encode({state='pending',counters=KEYS}),'EX',3024000) end
 return limit-used-1`;
 
 
 export class MemoryCreditStore implements CreditStore {
   private balances = new Map<string, number>();
   private reports = new Map<string, number>();
+  private reportReservations = new Map<string, { counters: string[]; settled: boolean }>();
 
   async getBalance(key: string) {
     return this.balances.get(key) ?? 0;
@@ -91,13 +115,21 @@ export class MemoryCreditStore implements CreditStore {
   }
 
   async reserveReport(key: string, limit: number, periodKey: string) { return this.reserveReports([key], limit, periodKey); }
-  async reserveReports(keys: string[], limit: number, periodKey: string) {
+  async reserveReports(keys: string[], limit: number, periodKey: string, reservation?: string) {
     if (!keys.length || !Number.isSafeInteger(limit) || limit < 1) throw new Error("Invalid report limit");
+    if (reservation && this.reportReservations.has(reservation)) return { success: false, remaining: 0 };
     const counters = [...new Set(keys)].map(key => `${key}:${periodKey}`);
     const used = Math.max(...counters.map(key => this.reports.get(key) ?? 0));
     if (used >= limit) return { success: false, remaining: 0 };
     counters.forEach(key => this.reports.set(key, (this.reports.get(key) ?? 0) + 1));
+    if (reservation) this.reportReservations.set(reservation, { counters, settled: false });
     return { success: true, remaining: limit - used - 1 };
+  }
+  async settleReports(reservation: string, succeeded: boolean) {
+    const entry = this.reportReservations.get(reservation);
+    if (!entry || entry.settled) return;
+    entry.settled = true;
+    if (!succeeded) entry.counters.forEach(key => this.reports.set(key, Math.max(0, (this.reports.get(key) ?? 0) - 1)));
   }
 }
 
@@ -148,11 +180,14 @@ export class RedisCreditStore implements CreditStore {
   }
 
   async reserveReport(key: string, limit: number, periodKey: string) { return this.reserveReports([key], limit, periodKey); }
-  async reserveReports(keys: string[], limit: number, periodKey: string) {
+  async reserveReports(keys: string[], limit: number, periodKey: string, reservation?: string) {
     if (!keys.length || !Number.isSafeInteger(limit) || limit < 1) throw new Error("Invalid report limit");
     const counters = [...new Set(keys)].map(key => `${this.prefix}rep:${key}:${periodKey}`);
-    const remaining = await this.redis.eval<unknown[], number>(RESERVE_REPORTS, counters, [limit]);
+    const remaining = await this.redis.eval<unknown[], number>(RESERVE_REPORTS, counters, [limit, reservation ? `${this.prefix}analysis-reservation:${reservation}` : "", reservation && /^[a-f0-9]{64}$/.test(reservation) ? `${this.prefix}artwork-job:${reservation}` : ""]);
     return { success: remaining >= 0, remaining: Math.max(0, remaining) };
+  }
+  async settleReports(reservation: string, succeeded: boolean) {
+    await this.redis.eval(SETTLE_REPORTS, [`${this.prefix}analysis-reservation:${reservation}`], [succeeded ? "1" : "0"]);
   }
 }
 

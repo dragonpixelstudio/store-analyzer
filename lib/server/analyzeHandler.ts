@@ -1,3 +1,5 @@
+import { currentJobBilling } from "@/lib/jobContext";
+import { getCreditStore } from "@/lib/credits";
 import { ANALYZER_TIMEOUT_MS, ANALYZER_CONFIG, GENRE_CONFIG, AnalyzerProviderError, collectAnalysisRuns, readAnalyzerObservations } from "@/lib/analyzerProvider";
 import { sandboxAnalysis } from "@/lib/sandboxAnalysis";
 import { analysisWorkflow } from "@/lib/analysisWorkflow";
@@ -360,6 +362,14 @@ export async function OPTIONS(req: Request) {
 }
 
 export async function POST(req: Request) {
+  let reservation: string | undefined;
+  const response = await analyzeRequest(req, id => { reservation = id; });
+  // Background jobs settle together with durable result publication instead.
+  if (reservation && !currentJobBilling()) await getCreditStore().settleReports(reservation, response.ok);
+  return response;
+}
+
+async function analyzeRequest(req: Request, reserved: (id: string) => void) {
   try {
     if (!sameOrigin(req)) {
       return jsonResponse(
@@ -543,6 +553,7 @@ export async function POST(req: Request) {
     // Enforce both identities before fixtures, caches, report writes or AI calls.
     const allowance = await reserveAnalysis(req);
     if (!allowance.success) return jsonResponse({ error: allowance.error }, { status: 429, headers: { "Retry-After": String(allowance.retryAfter) } });
+    reserved(allowance.reservation);
     if (localFixturesEnabled()) return jsonResponse(sandboxAnalysis(assetMetas));
 
     const persistReport = async (

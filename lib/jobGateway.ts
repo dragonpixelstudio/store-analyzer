@@ -1,8 +1,9 @@
+import { summarizeJob } from "./jobSummary";
 import { createHash, randomUUID } from "node:crypto";
 import { NextRequest, NextResponse } from "next/server";
 import { Ratelimit } from "@upstash/ratelimit";
 import { boundedBytes } from "./requestBody";
-import { ArtworkJobStore, jobId, jobSignature, validJobId, type ArtworkJob, type ArtworkJobKind } from "./artworkJobs";
+import { ArtworkJobStore, JOB_DEADLINE, jobId, jobSignature, validJobId, type ArtworkJob, type ArtworkJobKind } from "./artworkJobs";
 import { getClientIp, redis } from "./ratelimit";
 import { callerKey, ensureTrialSeed, getCreditStore } from "./credits";
 import { billingStore } from "./billingStore";
@@ -77,6 +78,7 @@ export async function readArtworkJob(req: NextRequest, id: string) {
     const result=await store.result(id);
     if(!result) return reply({error:"Artwork result expired."},410);
     const data=JSON.parse(result.body);
+    if (job.kind === "analyze") data.analysisReturned = job.analysisReturned === true;
     if(data.credits && job.charged !== undefined) data.credits={...data.credits,charged:job.charged,refunded:job.refunded,pending:false,remaining:await getCreditStore().getBalance(account).catch(()=>null)};
     const response=reply(data,result.status);
     response.headers.set("X-Artwork-Job-State", "done");
@@ -91,7 +93,14 @@ export async function listArtworkJobs(req: NextRequest) {
   if(req.headers.has("origin") && !sameOrigin(req)) return reply({error:"Origin not allowed"},403);
   try {
     if(!allowed(await pollLimit.limit(account))) return reply({error:"Please wait before checking again."},429);
-    const jobs=await new ArtworkJobStore().recent(account);
-    return reply({jobs:jobs.map(({id,kind,state,created})=>({id,kind,state,created}))});
+    const store = new ArtworkJobStore();
+    const jobs = await store.recent(account);
+    const summaries = await Promise.all(jobs.map(async job => {
+      const stale = job.state !== "done" && Date.now() - job.created >= JOB_DEADLINE;
+      if (stale) await store.expire(job);
+      const current = stale ? await store.get(job.id) : job;
+      return current ? summarizeJob(current, current.state === "done" ? await store.result(job.id) : null) : null;
+    }));
+    return reply({jobs: summaries.filter(Boolean)});
   } catch { return reply({error:"Recent jobs are temporarily unavailable."},503); }
 }
