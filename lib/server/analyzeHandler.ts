@@ -1,3 +1,4 @@
+import { ANALYZER_TIMEOUT_MS, ANALYZER_CONFIG, GENRE_CONFIG, AnalyzerProviderError, collectAnalysisRuns, readAnalyzerObservations } from "@/lib/analyzerProvider";
 import { sandboxAnalysis } from "@/lib/sandboxAnalysis";
 import { analysisWorkflow } from "@/lib/analysisWorkflow";
 import { validateImageInput } from "@/lib/imageInput";
@@ -17,7 +18,6 @@ import {
   calculateDragonPixelScores,
   clientReadout,
   getReviewMode,
-  sanitizeObservations,
   stringValue,
   verdictFromScore,
   MAX_CREATIVES,
@@ -212,7 +212,7 @@ type ImagePartResult =
 
 // Bump this whenever prompt/scoring logic changes so stale cached reports
 // are naturally invalidated.
-const ANALYZER_PROMPT_VERSION = "context-v16-2026-09-24";
+const ANALYZER_PROMPT_VERSION = "context-v17-provider-2026-10-05";
 const ANALYSIS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days
 
 function stableHash(value: unknown) {
@@ -679,7 +679,7 @@ export async function POST(req: Request) {
 
     const ai = new GoogleGenAI({
       apiKey: process.env.GEMINI_API_KEY!,
-      httpOptions: { timeout: 25000 },
+      httpOptions: { timeout: ANALYZER_TIMEOUT_MS },
     });
     let genre = sanitizeGenreClassification({});
     try {
@@ -695,13 +695,7 @@ export async function POST(req: Request) {
             ],
           },
         ],
-        config: {
-          temperature: 0,
-          topP: 0.1,
-          topK: 1,
-          candidateCount: 1,
-          responseMimeType: "application/json",
-        },
+        config: GENRE_CONFIG,
       });
       genre = sanitizeGenreClassification(
         parseAnalyzerReply(genreResponse.text || "{}")
@@ -812,18 +806,9 @@ export async function POST(req: Request) {
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: [{ role: "user", parts }],
-        config: {
-          temperature: 0,
-          topP: 0.1,
-          topK: 1,
-          candidateCount: 1,
-          responseMimeType: "application/json",
-        },
+        config: ANALYZER_CONFIG,
       });
-      const observations = sanitizeObservations(
-        parseAnalyzerReply(response.text || "")
-      );
-      if (!observations) throw new Error("unusable analysis run");
+      const observations = readAnalyzerObservations(response);
       return {
         observations,
         calculated: calculateDragonPixelScores(
@@ -834,33 +819,8 @@ export async function POST(req: Request) {
       };
     };
 
-    const settledRuns = await Promise.allSettled(
-      Array.from({ length: ANALYSIS_RUNS }, runAnalysis)
-    );
-    const runs = settledRuns
-      .filter(
-        (item): item is PromiseFulfilledResult<Awaited<ReturnType<typeof runAnalysis>>> =>
-          item.status === "fulfilled"
-      )
-      .map((item) => item.value)
+    const runs = (await collectAnalysisRuns(runAnalysis, ANALYSIS_RUNS))
       .sort((a, b) => a.calculated.launchScore - b.calculated.launchScore);
-
-    if (runs.length === 0) {
-      const firstError = settledRuns.find(
-        (item): item is PromiseRejectedResult => item.status === "rejected"
-      )?.reason;
-      // Preserve 503-style upstream errors for the outer handler's messaging.
-      if (firstError instanceof Error && /503|UNAVAILABLE|high demand/.test(firstError.message)) {
-        throw firstError;
-      }
-      return jsonResponse(
-        {
-          error:
-            "The AI review returned an unreadable response. Please try again.",
-        },
-        { status: 502 }
-      );
-    }
 
     const { observations, calculated } = runs[Math.floor(runs.length / 2)];
 
@@ -913,7 +873,11 @@ export async function POST(req: Request) {
 
     return jsonResponse({ ...payload, reportId, specNotes });
   } catch (err: unknown) {
-    console.error("Analyze API error:", err);
+    if (err instanceof AnalyzerProviderError) {
+      console.error("Analyze provider failure", { kind: err.kind, status: err.upstreamStatus });
+      return jsonResponse({ error: err.message }, { status: err.status, ...(err.status === 503 || err.status === 504 ? { headers: { "Retry-After": "60" } } : {}) });
+    }
+    console.error("Analyze API error:", err instanceof Error ? err.name : "unknown");
 
     const msg =
       err instanceof Error ? err.message : JSON.stringify(err);

@@ -79,6 +79,7 @@ export async function readArtworkJob(req: NextRequest, id: string) {
     const data=JSON.parse(result.body);
     if(data.credits && job.charged !== undefined) data.credits={...data.credits,charged:job.charged,refunded:job.refunded,pending:false,remaining:await getCreditStore().getBalance(account).catch(()=>null)};
     const response=reply(data,result.status);
+    response.headers.set("X-Artwork-Job-State", "done");
     if(result.retryAfter) response.headers.set("Retry-After",result.retryAfter);
     return response;
   } catch { return reply({error:"Could not check this artwork job. Please retry."},503); }

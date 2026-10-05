@@ -12,7 +12,9 @@ export async function artworkRequest(url: string, init: RequestInit): Promise<Re
   while(Date.now()<deadline) {
     await new Promise(resolve=>setTimeout(resolve,5000));
     try { response=await fetch(statusUrl,{cache:"no-store"}); } catch { continue; }
-    if(response.status === 202 || response.status === 429 || response.status === 503) continue;
+    // A completed job may itself return a provider outage or daily-limit error.
+    // Only retry temporary failures of the polling endpoint, not final results.
+    if(response.status === 202 || ((response.status === 429 || response.status === 503) && response.headers.get("X-Artwork-Job-State") !== "done")) continue;
     return response;
   }
   return Response.json({error:"Your job is taking longer than expected. Open Recent jobs to check or recover it before starting another request."},{status:504});

@@ -1,15 +1,14 @@
+import { ANALYZER_TIMEOUT_MS, ANALYZER_CONFIG, collectAnalysisRuns, readAnalyzerObservations } from "./analyzerProvider";
 import { GoogleGenAI, type Part } from "@google/genai";
 import sharp from "sharp";
 import {
   buildAnalyzerPrompt,
-  parseAnalyzerReply,
   type AnalyzerAssetMeta,
   type AnalyzerPlatform,
 } from "@/lib/analyzerPrompt";
 import {
   calculateDragonPixelScores,
   getReviewMode,
-  sanitizeObservations,
 } from "@/lib/analyzerCore";
 import { aspectLabel, normalizeForAnalysis } from "@/lib/imageNormalize";
 
@@ -89,22 +88,16 @@ export async function rescoreSingleAsset(args: {
       { inlineData: { mimeType: normalized.mimeType, data: normalized.base64 } },
     ];
 
-    const ai = new GoogleGenAI({ apiKey: args.apiKey, httpOptions: { timeout: 20000 } });
+    const ai = new GoogleGenAI({ apiKey: args.apiKey, httpOptions: { timeout: ANALYZER_TIMEOUT_MS } });
 
     const runOnce = async (): Promise<RescoreResult | null> => {
       const response = await ai.models.generateContent({
         model: "gemini-2.5-flash",
         contents: [{ role: "user", parts }],
-        config: {
-          temperature: 0,
-          topP: 0.1,
-          topK: 1,
-          candidateCount: 1,
-          responseMimeType: "application/json",
-        },
+        config: ANALYZER_CONFIG,
       });
 
-      const observations = sanitizeObservations(parseAnalyzerReply(response.text || ""));
+      const observations = readAnalyzerObservations(response);
       if (!observations || observations.notGameAsset) return null;
 
       const calculated = calculateDragonPixelScores(
@@ -119,15 +112,8 @@ export async function rescoreSingleAsset(args: {
       };
     };
 
-    const settled = await Promise.allSettled(
-      Array.from({ length: RESCORE_RUNS }, runOnce)
-    );
-    const runs = settled
-      .filter(
-        (r): r is PromiseFulfilledResult<RescoreResult> =>
-          r.status === "fulfilled" && r.value !== null
-      )
-      .map((r) => r.value)
+    const runs = (await collectAnalysisRuns(runOnce, RESCORE_RUNS))
+      .filter((run): run is RescoreResult => run !== null)
       .sort((a, b) => a.score - b.score);
 
     if (runs.length === 0) return null;
