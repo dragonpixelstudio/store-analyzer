@@ -1,3 +1,4 @@
+import { verifyDiscountedPayment } from "@/lib/discountPayment";
 import { boundedText } from "@/lib/requestBody";
 import { NextRequest, NextResponse } from "next/server";
 import { billingStore, type Payment } from "@/lib/billingStore";
@@ -61,11 +62,16 @@ export async function POST(req: NextRequest) {
         // mint again from a replay: reconcile old receipts before migrating them.
         if (await store.getPayment(data.payment_id)) return NextResponse.json({ received: true, duplicate: true });
         if (!orderId) throw new Error("Legacy payment requires reconciliation before credit migration");
+        let providerVerifiedAmount: number | undefined;
         if (orderId) {
           const order = await store.getOrder(orderId);
           if (!order || items.length !== 1 || items[0].id !== order.productId || items[0].quantity !== 1) throw new Error("Checkout product mismatch");
+          if (data.total_amount < order.cents) {
+            const canonical = await dodoRequest(`/payments/${encodeURIComponent(data.payment_id)}`);
+            providerVerifiedAmount = verifyDiscountedPayment(canonical, data, order);
+          }
         }
-        const payment: Payment = { id: data.payment_id, accountKey: account, credits, amount: data.total_amount, currency: data.currency, orderId, refundedAmount: 0, revokedCredits: 0 };
+        const payment: Payment = { id: data.payment_id, accountKey: account, credits, amount: data.total_amount, currency: data.currency, orderId, refundedAmount: 0, revokedCredits: 0, ...(providerVerifiedAmount !== undefined ? { providerVerifiedAmount } : {}) };
         await store.settlePayment(payment);
       } else {
         // Subscription lifecycle changes plan only; payment.succeeded is the sole credit grant.

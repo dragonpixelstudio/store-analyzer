@@ -3,7 +3,7 @@ import { storagePrefix } from "@/lib/storageScope";
 import { Redis } from "@upstash/redis";
 
 export type Order = { id: string; accountKey: string; productId: string; productKey: string; credits: number; cents: number; currency: string; state: "pending" | "paid" | "refunded" | "failed" | "cancelled"; createdAt: string; paymentId?: string };
-export type Payment = { id: string; accountKey: string; credits: number; amount: number; currency: string; orderId?: string; refundedAmount: number; revokedCredits: number; plan?: string };
+export type Payment = { id: string; accountKey: string; credits: number; amount: number; currency: string; orderId?: string; refundedAmount: number; revokedCredits: number; plan?: string; providerVerifiedAmount?: number };
 export type LedgerEntry = { id: string; kind: "purchase" | "refund" | "generation"; amount: number; at: string; label: string };
 
 // Payment IDs and refund IDs have no expiry: a delayed retry must never mint credits.
@@ -13,7 +13,7 @@ local p=cjson.decode(ARGV[1])
 if KEYS[4]~='' then
  local raw=redis.call('GET',KEYS[4]); if not raw then return -1 end
  local o=cjson.decode(raw)
- if o.accountKey~=p.accountKey or o.credits~=p.credits or o.currency~=p.currency or p.amount<o.cents or (o.paymentId and o.paymentId~=p.id) then return -2 end
+ if o.accountKey~=p.accountKey or o.credits~=p.credits or o.currency~=p.currency or (p.amount<o.cents and p.providerVerifiedAmount~=p.amount) or (o.paymentId and o.paymentId~=p.id) then return -2 end
  o.state='paid'; o.paymentId=p.id; redis.call('SET',KEYS[4],cjson.encode(o))
 end
 redis.call('SET',KEYS[1],ARGV[1]); redis.call('INCRBY',KEYS[2],p.credits)
@@ -27,7 +27,8 @@ local p=cjson.decode(raw)
 local amount=tonumber(ARGV[1]); if ARGV[4]=='full' then amount=p.amount-p.refundedAmount end
 if amount<0 or p.refundedAmount+amount>p.amount then return -2 end
 local refunded=p.refundedAmount+amount
-local revoke=math.min(p.credits,math.ceil(p.credits*refunded/p.amount))
+local revoke=p.credits
+if p.amount>0 then revoke=math.min(p.credits,math.ceil(p.credits*refunded/p.amount)) end
 local delta=revoke-p.revokedCredits
 p.refundedAmount=refunded; p.revokedCredits=revoke
 redis.call('SET',KEYS[1],cjson.encode(p)); redis.call('SET',KEYS[2],amount)
@@ -69,14 +70,14 @@ export class BillingStore {
   async getPayment(id: string) { return this.redis.get<Payment>(this.key("payment", id)); }
   async history(account: string) { return this.redis.lrange<LedgerEntry>(this.key("ledger", account), 0, 19); }
   async settlePayment(payment: Payment) {
-    if (!Number.isSafeInteger(payment.credits) || payment.credits <= 0 || !Number.isSafeInteger(payment.amount) || payment.amount <= 0) throw new Error("Invalid payment amounts");
+    if (!Number.isSafeInteger(payment.credits) || payment.credits <= 0 || !Number.isSafeInteger(payment.amount) || payment.amount < 0 || (payment.amount === 0 && (!payment.orderId || payment.providerVerifiedAmount !== 0))) throw new Error("Invalid payment amounts");
     const entry: LedgerEntry = { id: payment.id, kind: "purchase", amount: payment.credits, at: new Date().toISOString(), label: "Credit purchase" };
     const result = await this.redis.eval<unknown[], number>(SETTLE_PAYMENT, [this.key("payment", payment.id), this.key("bal", payment.accountKey), this.key("ledger", payment.accountKey), payment.orderId ? this.key("order", payment.orderId) : ""], [JSON.stringify(payment), JSON.stringify(entry)]);
     if (result < 0) throw new Error("Payment order does not match");
     return result === 1;
   }
   async settleRefund(id: string, payment: Payment, amount: number | null) {
-    if (amount !== null && (!Number.isSafeInteger(amount) || amount <= 0)) throw new Error("Invalid refund amount");
+    if (amount !== null && (!Number.isSafeInteger(amount) || amount < 0 || (amount === 0 && payment.amount !== 0))) throw new Error("Invalid refund amount");
     const entry: LedgerEntry = { id, kind: "refund", amount: 0, at: new Date().toISOString(), label: "Refund adjustment" };
     const result = await this.redis.eval<unknown[], number>(SETTLE_REFUND, [this.key("payment", payment.id), this.key("refund", id), this.key("bal", payment.accountKey), this.key("ledger", payment.accountKey), payment.orderId ? this.key("order", payment.orderId) : ""], [amount ?? 0, JSON.stringify(entry), id, amount === null ? "full" : "partial"]);
     if (result < 0) throw new Error("Refund cannot be reconciled");

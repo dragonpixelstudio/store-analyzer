@@ -77,3 +77,25 @@ test("real Redis shares free quota across wallets and transfers only one trial u
   expect(await credits.getBalance(a)+await credits.getBalance(b)).toBe(3);
  }finally{await redis.del(...keys);}
 });
+
+test("verified discounted and zero-total purchases grant once and refunds revoke the correct credits",async()=>{
+ test.setTimeout(90000);loadEnvConfig(process.cwd());
+ const redis=Redis.fromEnv(),store=new BillingStore(redis,"dpx:test:discount:"+randomUUID()+":"),account="acct:discount-test",keys:string[]=[];
+ try{
+  for(const amount of [250,0]){
+   const order={id:"order-"+amount,accountKey:account,productId:"pdt_test",productKey:"quickfix",credits:6,cents:500,currency:"USD",state:"pending" as const,createdAt:new Date().toISOString()};
+   const payment:Payment={id:"pay-"+amount,accountKey:account,orderId:order.id,credits:6,amount,currency:"USD",refundedAmount:0,revokedCredits:0};
+   keys.push(store.key("order",order.id),store.key("payment",payment.id),store.key("refund","refund-"+amount),store.key("refund","refund-rest-"+amount));
+   await store.putOrder(order);
+   await expect(store.settlePayment(payment)).rejects.toThrow();
+   const verified={...payment,providerVerifiedAmount:amount};
+   expect(await Promise.all([store.settlePayment(verified),store.settlePayment(verified)])).toEqual(expect.arrayContaining([true,false]));
+   expect(await redis.get(store.key("bal",account))).toBe(6);
+   if(amount){await store.settleRefund("refund-"+amount,verified,125);expect(await redis.get(store.key("bal",account))).toBe(3);await store.settleRefund("refund-rest-"+amount,verified,null);}
+   else await store.settleRefund("refund-"+amount,verified,0);
+   await store.settleRefund("refund-"+amount,verified,amount?125:0);
+   expect(await redis.get(store.key("bal",account))).toBe(0);
+   expect((await store.getPayment(payment.id))?.revokedCredits).toBe(6);
+  }
+ }finally{await redis.del(...keys,store.key("bal",account),store.key("ledger",account));}
+});

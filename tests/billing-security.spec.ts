@@ -1,3 +1,4 @@
+import { verifyDiscountedPayment } from "../lib/discountPayment";
 import { test, expect } from "@playwright/test";
 import { createHmac } from "crypto";
 import { verifyDodoSignature, paymentItems } from "../lib/dodo";
@@ -77,4 +78,16 @@ test("development loopback aliases work without allowing foreign origins", () =>
     expect(sameOrigin(new Request("http://localhost:3100/api", { headers: { host: "127.0.0.1:3100", origin: "http://127.0.0.1:3100" } }))).toBe(true);
     expect(sameOrigin(new Request("http://localhost:3100/api", { headers: { host: "127.0.0.1:3100", origin: "http://evil.example" } }))).toBe(false);
   } finally { Object.assign(process.env, { NODE_ENV: old }); }
+});
+
+test("discounts require a canonical succeeded payment bound to the exact wallet, order and cart",()=>{
+ const order={id:"order-1",accountKey:"acct:test",productId:"pdt_test",productKey:"quickfix",credits:6,cents:500,currency:"USD",state:"pending" as const,createdAt:"2026-10-06"};
+ const event={payment_id:"pay_test",currency:"USD",total_amount:250};
+ const canonical={...event,status:"succeeded",discount_id:"dis_test",metadata:{dpx_order_id:order.id,dpx_account_key:order.accountKey,dpx_product_key:order.productKey},product_cart:[{product_id:order.productId,quantity:1}]};
+ expect(verifyDiscountedPayment(canonical,event,order)).toBe(250);
+ expect(verifyDiscountedPayment({...canonical,total_amount:0},{...event,total_amount:0},order)).toBe(0);
+ expect(verifyDiscountedPayment({...canonical,discount_id:undefined,discount_ids:["dis_test"]},event,order)).toBe(250);
+ for(const patch of [{status:"failed"},{status:"processing"},{payment_id:"another"},{currency:"EUR"},{total_amount:1},{total_amount:-1},{discount_id:undefined},{metadata:{...canonical.metadata,dpx_order_id:"another"}},{metadata:{...canonical.metadata,dpx_account_key:"acct:other"}},{metadata:{...canonical.metadata,dpx_product_key:"topup_25"}},{product_cart:[{product_id:"other",quantity:1}]},{product_cart:[{product_id:order.productId,quantity:2}]}]) {
+  expect(()=>verifyDiscountedPayment({...canonical,...patch},event,order)).toThrow("could not be verified");
+ }
 });

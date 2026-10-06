@@ -35,9 +35,9 @@ export async function POST(req: NextRequest) {
     const origin = process.env.NODE_ENV === "production" ? (process.env.APP_URL || "https://launch.dragonpixelstudio.com") : req.headers.get("origin")!;
     const data = await dodoRequest("/checkouts", {
       product_cart: [{ product_id: productId, quantity: 1 }],
-      // Credit packs have fixed pricing; zero-total promotional orders are not supported.
+      // Dodo validates discount eligibility; the webhook verifies discounted totals.
       billing_currency: "USD",
-      feature_flags: { allow_discount_code: false, allow_currency_selection: false },
+      feature_flags: { allow_discount_code: true, allow_currency_selection: false },
       return_url: `${origin}/checkout/success?order=${id}`,
       metadata: { dpx_account_key: key, dpx_order_id: id, dpx_product_key: pack.key, dpx_source: "credit_wallet" },
     });
