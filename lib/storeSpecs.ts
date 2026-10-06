@@ -1,5 +1,5 @@
 // Store dimension database: known asset sizes for Steam, Google Play, and the
-// App Store. Dimensions identify the asset - 920×430 is exactly a 2x Steam
+// App Store. Dimensions identify the asset - 920×430 is exactly a native Steam
 // header capsule, not a Google Play feature graphic - so classification, spec
 // warnings, and the platform context fed to generation all key off this
 // instead of loose aspect-ratio guessing.
@@ -29,10 +29,10 @@ export type StoreSpec = {
 };
 
 export const STORE_SPECS: StoreSpec[] = [
-  { name: "Steam header capsule", role: "steamCapsule", platform: "steam", baseW: 460, baseH: 215, ratioTol: 0.035 },
-  { name: "Steam small capsule", role: "steamCapsule", platform: "steam", baseW: 231, baseH: 87, ratioTol: 0.035 },
-  { name: "Steam main capsule", role: "steamCapsule", platform: "steam", baseW: 616, baseH: 353, ratioTol: 0 },
-  { name: "Steam vertical capsule", role: "steamCapsule", platform: "steam", baseW: 374, baseH: 448, ratioTol: 0.03 },
+  { name: "Steam header capsule", role: "steamCapsule", platform: "steam", baseW: 920, baseH: 430, ratioTol: 0.035 },
+  { name: "Steam small capsule", role: "steamCapsule", platform: "steam", baseW: 462, baseH: 174, ratioTol: 0.035 },
+  { name: "Steam main capsule", role: "steamCapsule", platform: "steam", baseW: 1232, baseH: 706, ratioTol: 0 },
+  { name: "Steam vertical capsule", role: "steamCapsule", platform: "steam", baseW: 748, baseH: 896, ratioTol: 0.03 },
   { name: "Steam library capsule", role: "steamCapsule", platform: "steam", baseW: 600, baseH: 900, ratioTol: 0.03 },
   { name: "Google Play icon", role: "icon", platform: "google-play", baseW: 512, baseH: 512, ratioTol: 0.05 },
   { name: "App Store icon", role: "icon", platform: "app-store", baseW: 1024, baseH: 1024, ratioTol: 0.05 },

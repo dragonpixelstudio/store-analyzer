@@ -65,6 +65,7 @@ type StudioResult = {
   width: number;
   height: number;
   gameName: string;
+  reviewContext?: string;
   label: string;
   example?: boolean;
   score?: Score;
@@ -234,8 +235,8 @@ export default function StudioApp({ availableImages }: { availableImages: string
   const [mode, setMode] = useState<StudioAssetType>("capsule");
   const [storageReady, setStorageReady] = useState(false);
   const [formatId, setFormatId] = useState("");
-  const [gameName, setGameName] = useState("Hollowmere");
-  const [gamePitch, setGamePitch] = useState("A moody action-adventure across a forgotten realm, where light reveals secrets and something ancient stirs beneath the mist.");
+  const [gameName, setGameName] = useState("");
+  const [gamePitch, setGamePitch] = useState("");
   const [styleId, setStyleId] = useState<StudioStyleId>("cinematic");
   const [recipeId, setRecipeId] = useState("");
   const [reference, setReference] = useState<{ base64: string; mimeType: string; previewUrl: string } | null>(null);
@@ -280,8 +281,8 @@ export default function StudioApp({ availableImages }: { availableImages: string
     const id = setTimeout(() => {
       try {
         const saved = JSON.parse(localStorage.getItem(STORAGE_KEY) || "{}");
-        if (typeof saved.name === "string") setGameName(saved.name);
-        if (typeof saved.pitch === "string") setGamePitch(saved.pitch);
+        if (typeof saved.name === "string" && saved.name !== "Hollowmere") setGameName(saved.name);
+        if (typeof saved.pitch === "string" && !saved.pitch.includes("where light reveals secrets and something ancient stirs")) setGamePitch(saved.pitch);
       } catch {
         // storage unavailable or empty
       } finally {
@@ -368,7 +369,7 @@ export default function StudioApp({ availableImages }: { availableImages: string
           const format = options.find(f => f.id === transfer.formatId) || options.find(f => type === "icon" && transfer.platform === "google-play" && f.id === "play-icon") || options.find(f => f.width === transfer.width && f.height === transfer.height) || [...options].sort((a,b) => Math.abs(a.width/a.height - transfer.width/transfer.height) - Math.abs(b.width/b.height - transfer.width/transfer.height))[0];
           const id = crypto.randomUUID();
           setMode(type); setFormatId(format.id);
-          setResults(prev => [{ id, type, formatId: format.id, dataUrl: transfer.dataUrl, base64: transfer.dataUrl.split(",")[1], width: img.width, height: img.height, gameName: transfer.gameName, label: "Original from Analyze" }, ...prev].slice(0,12));
+          setResults(prev => [{ id, type, formatId: format.id, dataUrl: transfer.dataUrl, base64: transfer.dataUrl.split(",")[1], width: img.width, height: img.height, gameName: transfer.gameName, reviewContext: [transfer.gameName, transfer.gamePitch].filter(Boolean).join(" - "), label: "Original from Analyze" }, ...prev].slice(0,12));
           setActiveId(id); setEditText(transfer.instruction); setToolPanel("ai");
           setGalleryNotice("Review your analysis brief in the edit panel. Nothing has been generated or charged. Applying an edit costs 1 credit.");
         }
@@ -381,8 +382,11 @@ export default function StudioApp({ availableImages }: { availableImages: string
     if (result.type === "thumbnail") return;
     try {
       const file = base64ToFile(result.base64, result.dataUrl.slice(5,result.dataUrl.indexOf(";")), "studio-artwork.webp");
-      const resized = await fileToWebp(file, 1600); const img = await loadImage(resized.previewUrl);
-      saveHandoff({ destination: "analyze", dataUrl: resized.previewUrl, name: result.gameName + ".webp", width: img.width, height: img.height, role: result.type === "icon" ? "icon" : result.type === "screenshot" ? "screenshot" : "steamCapsule", gameName: result.gameName, gamePitch, instruction: "", formatId: result.formatId, platform: result.type === "capsule" ? "steam" : result.formatId === "play-icon" ? "google-play" : "app-store" });
+      const resized = file.size <= 2 * 1024 * 1024 && /image\/(png|jpeg|webp)/.test(file.type) ? { previewUrl: result.dataUrl } : await fileToWebp(file, 1600); const img = await loadImage(resized.previewUrl);
+      const context = result.reviewContext;
+      const reviewName = context === undefined || context === result.gameName || context.startsWith(result.gameName + " - ") ? result.gameName : "";
+      const reviewPitch = context === undefined ? gamePitch : reviewName ? context.slice(reviewName.length).replace(/^ - /, "") : context;
+      saveHandoff({ destination: "analyze", dataUrl: resized.previewUrl, name: result.gameName + ".webp", width: img.width, height: img.height, role: result.type === "icon" ? "icon" : result.type === "screenshot" ? "screenshot" : "steamCapsule", gameName: reviewName, gamePitch: reviewPitch, instruction: "", formatId: result.formatId, platform: result.type === "capsule" ? "steam" : result.formatId === "play-icon" ? "google-play" : "app-store" });
       router.push("/analyze?from=studio");
     } catch { setError("Could not send artwork to Analyze. Download the image and upload it on the Analyze page."); }
   }
@@ -447,6 +451,7 @@ export default function StudioApp({ availableImages }: { availableImages: string
           width: data.image.width,
           height: data.image.height,
           gameName,
+          reviewContext: [gameName, gamePitch].filter(Boolean).join(" - "),
           label: recipe ? recipe.title : "Auto composition",
         });
         track("studio_generate");
@@ -494,6 +499,7 @@ export default function StudioApp({ availableImages }: { availableImages: string
         width: data.image.width,
         height: data.image.height,
         gameName: active.gameName,
+        reviewContext: active.reviewContext ?? "",
         label: `Edit: ${instruction}`,
       });
       setEditText("");
@@ -511,8 +517,9 @@ export default function StudioApp({ availableImages }: { availableImages: string
     setResults(prev => prev.map(r => r.id === result.id ? { ...r, scoring: true, scoreError: "", score: undefined } : r));
     try {
       const file = base64ToFile(result.base64, result.dataUrl.slice(5, result.dataUrl.indexOf(";")), "artwork.png");
-      const compressed = await fileToWebp(file, 1024);
-      const outcome = await scoreImage(base64ToFile(compressed.base64, compressed.mimeType, compressed.mimeType === "image/png" ? "review.png" : "review.webp"), result.type, [result.gameName, gamePitch].filter(Boolean).join(" — "));
+      // Preserve pixels for analysis when the existing artwork fits the upload budget.
+      const compressed = file.size <= 2 * 1024 * 1024 && /image\/(png|jpeg|webp)/.test(file.type) ? { base64: result.base64, mimeType: file.type } : await fileToWebp(file, 1024);
+      const outcome = await scoreImage(base64ToFile(compressed.base64, compressed.mimeType, compressed.mimeType === "image/png" ? "review.png" : "review.webp"), result.type, result.reviewContext ?? [result.gameName, gamePitch].filter(Boolean).join(" - "));
       setResults(prev => prev.map(r => r.id === result.id ? "error" in outcome ? { ...r, scoring: false, scoreError: outcome.error } : { ...r, scoring: false, score: outcome } : r));
       if (!("error" in outcome)) track("studio_score");
     } catch { setResults(prev => prev.map(r => r.id === result.id ? { ...r, scoring: false, scoreError: "Could not analyze this artwork. Please retry." } : r)); }
@@ -683,7 +690,7 @@ export default function StudioApp({ availableImages }: { availableImages: string
     if (!file || busy) return; setOpening(true); setError("");
     try {
       const art = await importArtworkFile(file); const type: StudioAiType = art.width === art.height ? "icon" : "capsule";
-      const result: StudioResult = { id: crypto.randomUUID(), type, dataUrl: art.src, base64: art.src.split(",")[1], width: art.width, height: art.height, gameName: file.name.replace(/\.[^.]+$/, ""), label: "Imported artwork" };
+      const result: StudioResult = { id: crypto.randomUUID(), type, dataUrl: art.src, base64: art.src.split(",")[1], width: art.width, height: art.height, gameName: file.name.replace(/\.[^.]+$/, ""), label: "Imported artwork", reviewContext: "" };
       addResult(result); setMode(type); setToolPanel(""); setEditorSource({ id: result.id, name: result.gameName, dataUrl: result.dataUrl, width: result.width, height: result.height, type });
     } catch (e) { setError((e as Error).message); } finally { setOpening(false); }
   }
@@ -711,7 +718,7 @@ export default function StudioApp({ availableImages }: { availableImages: string
   }
   function saveManual(value: EditorSave) {
     if (!editorSource) return;
-    const result: StudioResult = { id: crypto.randomUUID(), type: editorSource.type, formatId: editorSource.formatId, gameName: editorSource.name, label: "Manual edit", dataUrl: value.dataUrl, base64: value.dataUrl.split(",")[1], width: value.width, height: value.height, document: value.document };
+    const result: StudioResult = { id: crypto.randomUUID(), type: editorSource.type, formatId: editorSource.formatId, gameName: editorSource.name, reviewContext: results.find(item => item.id === editorSource.id)?.reviewContext, label: "Manual edit", dataUrl: value.dataUrl, base64: value.dataUrl.split(",")[1], width: value.width, height: value.height, document: value.document };
     addResult(result);
     setMode(editorSource.type); setEditorSource(null); setToolPanel(""); setGalleryNotice("Edits saved with editable layers. Export is free.");
     return result;

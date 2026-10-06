@@ -25,7 +25,7 @@ export default function ResultsOverview({ score, rows, mode, priorities, risk }:
         <div className="results-track" role={row.value === null ? undefined : "meter"} aria-label={names[row.label] || row.label} aria-valuenow={row.value ?? undefined} aria-valuemin={0} aria-valuemax={100}><i style={{ width: `${row.value ?? 0}%`, "--bar-delay": `${index * 65}ms` } as CSSProperties} /></div>
       </div>)}</div>
     </div>
-    <div className="results-profile"><h2>Visual profile</h2><ScoreRadar rows={rows} size={280} /><span>Unassessed signals have no score.</span></div>
+    <div className="results-profile"><h2>Visual profile</h2><ScoreRadar rows={rows} size={320} /></div>
     <footer><span>AI-assisted visual review</span><span>{risk?.assessed ? `Communication risk: ${risk.level}` : "Gameplay: add screenshots"}</span><span>Not audience or sales data</span></footer>
   </section>;
 }

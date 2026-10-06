@@ -691,14 +691,16 @@ function pushUniqueFix(out: DragonPixelFix[], fix: DragonPixelFix) {
 }
 
 // Return only supported findings. Never invent actions to fill a fixed-size UI.
+export const isActionableFix = (text: string) => !!text.trim() && !/^(?:no (?:immediate |significant |major |further )?(?:fixes|changes|issues|revisions)|none\b|not (?:needed|required)|n\/a\b)/i.test(text.trim());
 function completeTopFixes(fixes: DragonPixelFix[], reviewMode: ReviewMode, obs: Observations): DragonPixelFix[] {
   const out: DragonPixelFix[] = [];
-  fixes.filter(fix => fix.change.trim() && fix.why.trim()).forEach(fix => pushUniqueFix(out, fix));
+  const isAction = isActionableFix;
+  fixes.filter(fix => fix.change.trim() && fix.why.trim() && isAction(fix.action)).forEach(fix => pushUniqueFix(out, fix));
   // A ranked summary already covers the priorities; per-asset briefs stay in the editor handoff.
   if (out.length) return out.slice(0, 3);
   for (const review of obs.assetReview || []) {
     if (out.length >= 3) break;
-    if (!review.mainIssue.trim() || !review.bestFix.trim()) continue;
+    if (!review.mainIssue.trim() || !review.bestFix.trim() || !isAction(review.bestFix) || !isAction(review.mainIssue)) continue;
     pushUniqueFix(out, { action: review.bestFix, why: review.mainIssue, change: review.revisionBrief || review.bestFix });
   }
   if (!out.length && reviewMode === "iconOnly" && obs.shelfTest?.smallSizeRisk === true && (obs.shelfTest.lostElements?.length || 0) > 0) {

@@ -1,55 +1,33 @@
 import { currentJobBilling } from "@/lib/jobContext";
 import { reviewAccess, reserveReview, settleReview, type ReviewReservation } from "@/lib/reviewBilling";
-import { ANALYZER_TIMEOUT_MS, ANALYZER_CONFIG, GENRE_CONFIG, AnalyzerProviderError, collectAnalysisRuns, readAnalyzerObservations } from "@/lib/analyzerProvider";
+import { AnalyzerProviderError } from "@/lib/analyzerProvider";
+import { analyzeArtwork, AnalysisCapacityError } from "@/lib/analysisEngine";
+import { ReviewBusyError, ReviewStorageError } from "@/lib/analysisConsistency";
 import { sandboxAnalysis } from "@/lib/sandboxAnalysis";
-import { analysisWorkflow } from "@/lib/analysisWorkflow";
 import { validateImageInput } from "@/lib/imageInput";
 import { sameOrigin } from "@/lib/wallet";
 import { localFixturesEnabled } from "@/lib/storageScope";
 import { boundedFormData } from "@/lib/requestBody";
-import { storagePrefix } from "@/lib/storageScope";
-import { GoogleGenAI, type Part } from "@google/genai";
 import sharp from "sharp";
 import {
-  buildAnalyzerPrompt,
-  parseAnalyzerReply,
   type AnalyzerAssetMeta,
   type AnalyzerPlatform,
 } from "@/lib/analyzerPrompt";
 import {
-  calculateDragonPixelScores,
-  clientReadout,
-  getReviewMode,
   stringValue,
-  verdictFromScore,
   MAX_CREATIVES,
   MAX_SCREENSHOTS,
   type CalculatedReport,
   type Observations,
-  type ReviewMode,
 } from "@/lib/analyzerCore";
 import { saveReport, type StoredReportAsset } from "@/lib/reportStore";
-import {
-  aspectLabel,
-  normalizeForAnalysis,
-  perceptualSignature,
-  signaturesClose,
-} from "@/lib/imageNormalize";
 import { identifyAsset, ROLE_LABEL } from "@/lib/storeSpecs";
-import {
-  attachBenchmarkComparison,
-  benchmarkEvidencePrompt,
-  buildBenchmarkEvidence,
-  genreClassifierPrompt,
-  sanitizeGenreClassification,
-  type BenchmarkEvidence,
-} from "@/lib/iconEvidence";
+import type { BenchmarkEvidence } from "@/lib/iconEvidence";
 import {
   isBenchmarkGenre,
   type BenchmarkGenre,
 } from "@/lib/benchmarkCatalog";
-import crypto from "node:crypto";
-import { reviewWalletLimit, ipRatelimit, globalRatelimit, getClientIp, redis } from "@/lib/ratelimit";
+import { reviewWalletLimit, ipRatelimit, getClientIp } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -213,37 +191,11 @@ type ImagePartResult =
     }
   | { error: string };
 
-// Bump this whenever prompt/scoring logic changes so stale cached reports
-// are naturally invalidated.
-const ANALYZER_PROMPT_VERSION = "context-v17-provider-2026-10-05";
-const ANALYSIS_CACHE_TTL_SECONDS = 60 * 60 * 24 * 14; // 14 days
-
-function stableHash(value: unknown) {
-  return crypto.createHash("sha256").update(JSON.stringify(value)).digest("hex");
-}
-
-// Keyed on the perceptual signature of the pixels, not a byte hash - the same
-// capsule exported at 460px and 920px resolves to the same cached report, so
-// re-uploads at a different size cannot score differently.
-function makeAnalysisCacheKey(args: {
-  platform: AnalyzerPlatform;
-  gameContext: string;
-  genreOverride: BenchmarkGenre | null;
-  reviewMode: ReviewMode;
-  assets: {
-    kind: AnalyzerAssetMeta["providedKind"];
-    aspect: string;
-    psig: string;
-  }[];
-}) {
-  return `${storagePrefix()}analysis:${ANALYZER_PROMPT_VERSION}:${stableHash(args)}`;
-}
-
 // Deterministic export-size guidance, computed server-side so it can never
 // leak into the model's observations and shift the score. Driven by the
 // store-spec database: dimensions that exactly match a known store size (or a
 // clean multiple) identify the asset, so a 920×430 upload is recognised as a
-// 2x Steam header capsule instead of being lectured about Play sizes.
+// native Steam header capsule instead of being lectured about Play sizes.
 function specNoteFor(meta: AnalyzerAssetMeta): string | null {
   const { providedKind, widthPx, heightPx } = meta;
   const match = identifyAsset(widthPx, heightPx);
@@ -262,8 +214,8 @@ function specNoteFor(meta: AnalyzerAssetMeta): string | null {
     if (providedKind === "icon" && (widthPx < 512 || heightPx < 512)) {
       return `Icon uploaded at ${widthPx}×${heightPx} - export at 512×512 for Google Play (1024×1024 for the App Store). This does not affect the score.`;
     }
-    if (providedKind === "steamCapsule" && widthPx < 460) {
-      return `Capsule uploaded at ${widthPx}×${heightPx} - Steam's header capsule needs at least 460×215. This does not affect the score.`;
+    if (providedKind === "steamCapsule" && widthPx < 920) {
+      return `Capsule uploaded at ${widthPx}×${heightPx} - Steam's header capsule needs 920×430. This does not affect the score.`;
     }
     if (providedKind === "featureGraphic" && widthPx < 1024) {
       return `Feature graphic uploaded at ${widthPx}×${heightPx} - Google Play expects 1024×500. This does not affect the score.`;
@@ -323,8 +275,9 @@ async function prepareImagePart(
 async function makeReportThumb(buffer: Buffer): Promise<string> {
   try {
     const webp = await sharp(buffer)
-      .resize(192, 192, { fit: "inside", withoutEnlargement: true })
-      .webp({ quality: 72 })
+      .rotate().toColourspace("srgb")
+      .resize(640, 640, { fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 80 })
       .toBuffer();
     return `data:image/webp;base64,${webp.toString("base64")}`;
   } catch (err) {
@@ -470,9 +423,7 @@ async function analyzeRequest(req: Request, reserved: (value: ReviewReservation)
     );
 
     const assetMetas: AnalyzerAssetMeta[] = [];
-    const assetSigs: string[] = [];
     const assetBuffers: Buffer[] = [];
-    const imageParts: Part[] = [];
 
     const addPreparedAsset = async (
       meta: AnalyzerAssetMeta,
@@ -480,20 +431,7 @@ async function analyzeRequest(req: Request, reserved: (value: ReviewReservation)
     ) => {
       assetMetas.push(meta);
       assetBuffers.push(buffer);
-      // Gemini only ever sees the normalized review-scale image and the
-      // aspect ratio - never the export resolution - so the same art at any
-      // size produces the same observations.
-      const [normalized, psig] = await Promise.all([
-        normalizeForAnalysis(buffer),
-        perceptualSignature(buffer),
-      ]);
-      assetSigs.push(psig);
-      imageParts.push({
-        text: `IMAGE ${assetMetas.length}: ${meta.label}. Declared type: ${meta.providedKind}. Aspect ratio: ${aspectLabel(meta.widthPx, meta.heightPx)}.`,
-      });
-      imageParts.push({
-        inlineData: { mimeType: normalized.mimeType, data: normalized.base64 },
-      });
+
     };
 
     if (icon) {
@@ -561,334 +499,14 @@ async function analyzeRequest(req: Request, reserved: (value: ReviewReservation)
     reserved(allowance.reservation);
     if (localFixturesEnabled()) return jsonResponse(sandboxAnalysis(assetMetas));
 
-    const persistReport = async (
-      observations: Observations,
-      calculated: CalculatedReport,
-      verdict: string,
-      benchmarkEvidence?: BenchmarkEvidence[]
-    ): Promise<string | undefined> => {
-      const reportAssets: StoredReportAsset[] = await Promise.all(
-        assetMetas.map(async (meta, i) => ({
-          label: meta.label,
-          kind: meta.providedKind,
-          widthPx: meta.widthPx,
-          heightPx: meta.heightPx,
-          thumb: await makeReportThumb(assetBuffers[i]),
-        }))
-      );
-      const id = await saveReport({
-        platform,
-        verdict,
-        calculated,
-        observations,
-        assets: reportAssets,
-        benchmarkEvidence,
-      });
-      return id ?? undefined;
-    };
-
-    // Same image(s) + role + platform + context => identical report, served
-    // from cache. This is the real consistency fix: a re-run of the same asset
-    // no longer re-queries Gemini, so the score cannot drift between runs.
-    const reviewMode = getReviewMode(
-      Boolean(icon),
-      screenshots.length + creatives.length
-    );
-    const cacheKey = makeAnalysisCacheKey({
-      platform,
-      gameContext: gameContext.trim(),
-      genreOverride,
-      reviewMode,
-      assets: assetMetas.map((meta, i) => ({
-        kind: meta.providedKind,
-        aspect: aspectLabel(meta.widthPx, meta.heightPx),
-        psig: assetSigs[i],
-      })),
-    });
-
-    const specNotes = assetMetas
-      .map(specNoteFor)
-      .filter((note): note is string => note !== null);
-
-    // Fuzzy fallback index: resampling shifts a few signature bits, so the
-    // same art re-uploaded at another size rarely produces the exact same
-    // key. The bucket groups uploads by everything except pixels; a
-    // near-match within hamming tolerance reuses the earlier report, which
-    // is what guarantees "same capsule, different export size, same score".
-    const psigJoined = assetSigs.join("|");
-    const bucketKey = `${storagePrefix()}psigidx:${ANALYZER_PROMPT_VERSION}:${stableHash({
-      platform,
-      gameContext: gameContext.trim(),
-      genreOverride,
-      reviewMode,
-      assets: assetMetas.map((meta) => ({
-        kind: meta.providedKind,
-        aspect: aspectLabel(meta.widthPx, meta.heightPx),
-      })),
-    })}`;
-
-    const isReportPayload = (
-      value: unknown
-    ): value is Extract<JsonBody, { calculated: CalculatedReport }> =>
-      Boolean(value) &&
-      typeof value === "object" &&
-      typeof (value as { calculated?: { launchScore?: unknown } }).calculated
-        ?.launchScore === "number";
-
-    let cached = await redis
-      .get<Record<string, unknown>>(cacheKey)
-      .catch((err) => {
-        console.error("analysis cache read failed", err);
-        return null;
-      });
-
-    if (!isReportPayload(cached)) {
-      const index = await redis
-        .hgetall<Record<string, string>>(bucketKey)
-        .catch((err) => {
-          console.error("psig index read failed", err);
-          return null;
-        });
-      if (index) {
-        const nearKey = Object.entries(index).find(([storedPsig]) =>
-          signaturesClose(psigJoined, storedPsig)
-        )?.[1];
-        if (nearKey) {
-          cached = await redis
-            .get<Record<string, unknown>>(nearKey)
-            .catch(() => null);
-          if (isReportPayload(cached)) {
-            // Promote to an exact hit and index this size's signature too,
-            // so a third export size can match against either upload.
-            await redis
-              .set(cacheKey, cached, { ex: ANALYSIS_CACHE_TTL_SECONDS })
-              .catch(() => {});
-            await redis
-              .hset(bucketKey, { [psigJoined]: cacheKey })
-              .catch(() => {});
-          }
-        }
-      }
-    }
-
-    if (isReportPayload(cached)) {
-      const cachedBody = cached;
-      const reportId = await persistReport(
-        cachedBody.observations,
-        cachedBody.calculated,
-        cachedBody.verdict,
-        cachedBody.benchmarkEvidence
-      );
-      return jsonResponse({ ...cachedBody, reportId, specNotes });
-    }
-
-    const global = await globalRatelimit.limit("global");
-    if (!global.success || global.reason === "timeout") {
-      return jsonResponse(
-        {
-          error:
-            "The analyzer is at daily capacity. Please try again tomorrow.",
-        },
-        { status: 429 }
-      );
-    }
-
-    const ai = new GoogleGenAI({
-      apiKey: process.env.GEMINI_API_KEY!,
-      httpOptions: { timeout: ANALYZER_TIMEOUT_MS },
-    });
-    let genre = sanitizeGenreClassification({});
-    try {
-      const representativeParts = imageParts.slice(0, 2);
-      const genreResponse = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [
-          {
-            role: "user",
-            parts: [
-              { text: genreClassifierPrompt(gameContext) },
-              ...representativeParts,
-            ],
-          },
-        ],
-        config: GENRE_CONFIG,
-      });
-      genre = sanitizeGenreClassification(
-        parseAnalyzerReply(genreResponse.text || "{}")
-      );
-    } catch (err) {
-      console.error(
-        "benchmark genre classification failed:",
-        err instanceof Error ? err.message : "unknown error"
-      );
-    }
-    if (genreOverride) {
-      genre = {
-        ...genre,
-        primary: genreOverride,
-        secondary: genre.secondary.filter(
-          (candidate) => candidate !== genreOverride
-        ),
-        confidence: "high",
-        selectionSource: "user-confirmed",
-        visibleSignals: [
-          `User confirmed ${genreOverride} for benchmark selection.`,
-          ...genre.visibleSignals,
-        ].slice(0, 5),
-      };
-    }
-
-    const benchmarkTargets: Array<{
-      userAsset: Buffer;
-      assetKind: "icon" | "screenshot";
-    }> = [];
-    if (icon && assetBuffers[0]) {
-      benchmarkTargets.push({ userAsset: assetBuffers[0], assetKind: "icon" });
-    }
-    const firstScreenshotIndex = icon ? 1 : 0;
-    if (screenshots.length > 0 && assetBuffers[firstScreenshotIndex]) {
-      benchmarkTargets.push({
-        userAsset: assetBuffers[firstScreenshotIndex],
-        assetKind: "screenshot",
-      });
-    }
-
-    const benchmarkRuns = (
-      await Promise.all(
-        benchmarkTargets.map((target) =>
-          buildBenchmarkEvidence({
-            ...target,
-            platform,
-            genre,
-          }).catch((err) => {
-            console.error(
-              `benchmark ${target.assetKind} evidence failed:`,
-              err instanceof Error ? err.message : "unknown error"
-            );
-            return null;
-          })
-        )
-      )
-    ).filter(
-      (
-        item
-      ): item is Awaited<ReturnType<typeof buildBenchmarkEvidence>> =>
-        item !== null
-    );
-    const initialBenchmarkEvidence = benchmarkRuns.map((run) => run.evidence);
-    const benchmarkParts: Part[] = benchmarkRuns.flatMap((run) =>
-      run.imageParts.flatMap((item) => [
-        {
-          text: `PUBLISHED BENCHMARK ${item.reference.id}: ${item.reference.title}; platform ${item.reference.platform}; asset type ${item.reference.assetKind}; role ${item.reference.role}; matched genres ${item.reference.matchedGenres.join(", ") || "none"}; pattern ${item.reference.pattern}.`,
-        },
-        {
-          inlineData: {
-            mimeType: item.mimeType,
-            data: item.base64,
-          },
-        },
-      ])
-    );
-    const parts: Part[] = [
-      {
-        text: buildAnalyzerPrompt({
-          assets: assetMetas,
-          platform,
-          gameContext,
-          hasIcon: Boolean(icon),
-          hasScreenshots: screenshots.length > 0,
-          hasCreatives: creatives.length > 0,
-          benchmarkContext: initialBenchmarkEvidence
-            .map(benchmarkEvidencePrompt)
-            .join("\n\n"),
-        }),
-      },
-      ...imageParts,
-      ...benchmarkParts,
-    ];
-
-    // The pinned score must never be one lucky draw: even at temperature 0 a
-    // single vision pass drifts a few observation booleans (worth 5-10 score
-    // points). Three independent reads run in parallel and the run whose
-    // launch score is the MEDIAN becomes the report - same policy as the
-    // variant re-scorer, so the analyzer and re-scorer agree on method.
-    const ANALYSIS_RUNS = 3;
-    const scoringFlags = {
-      hasIcon: Boolean(icon),
-      hasScreens: screenshots.length > 0,
-      hasCreatives: creatives.length > 0,
-    };
-    const runAnalysis = async () => {
-      const response = await ai.models.generateContent({
-        model: "gemini-2.5-flash",
-        contents: [{ role: "user", parts }],
-        config: ANALYZER_CONFIG,
-      });
-      const observations = readAnalyzerObservations(response);
-      return {
-        observations,
-        calculated: calculateDragonPixelScores(
-          observations,
-          reviewMode,
-          scoringFlags
-        ),
-      };
-    };
-
-    const runs = (await collectAnalysisRuns(runAnalysis, ANALYSIS_RUNS))
-      .sort((a, b) => a.calculated.launchScore - b.calculated.launchScore);
-
-    const { observations, calculated } = runs[Math.floor(runs.length / 2)];
-
-    const benchmarkComparisons =
-      observations.benchmarkComparisons ||
-      (observations.benchmarkComparison
-        ? [observations.benchmarkComparison]
-        : []);
-    const benchmarkEvidence = initialBenchmarkEvidence.map((evidence) =>
-      attachBenchmarkComparison(
-        evidence,
-        benchmarkComparisons.find(
-          (comparison) => comparison.assetKind === evidence.assetKind
-        ) ||
-          (initialBenchmarkEvidence.length === 1
-            ? benchmarkComparisons[0]
-            : undefined)
-      )
-    );
-    const verdict = verdictFromScore(calculated.launchScore);
-
-    const payload = {
-      observations,
-      calculated,
-      verdict,
-      benchmarkEvidence,
-      workflow: analysisWorkflow(assetMetas, observations),
-      ...clientReadout(observations),
-    };
-
-    await redis
-      .set(cacheKey, payload, { ex: ANALYSIS_CACHE_TTL_SECONDS })
-      .catch((err) => {
-        console.error("analysis cache write failed", err);
-      });
-
-    await redis
-      .hset(bucketKey, { [psigJoined]: cacheKey })
-      .then(() => redis.expire(bucketKey, ANALYSIS_CACHE_TTL_SECONDS))
-      .catch((err) => {
-        console.error("psig index write failed", err);
-      });
-
-    const reportId = await persistReport(
-      observations,
-      calculated,
-      verdict,
-      benchmarkEvidence
-    );
-
+    const payload = await analyzeArtwork({ assets: assetMetas.map((meta, i) => ({ meta, buffer: assetBuffers[i] })), platform, context: gameContext, genreOverride });
+    const reportAssets: StoredReportAsset[] = await Promise.all(assetMetas.map(async (meta, i) => ({ label: meta.label, kind: meta.providedKind, widthPx: meta.widthPx, heightPx: meta.heightPx, thumb: await makeReportThumb(assetBuffers[i]) })));
+    const reportId = await saveReport({ platform: payload.reviewIdentity.platform, ...payload, assets: reportAssets });
+    if (!reportId) throw new ReviewStorageError();
+    const specNotes = assetMetas.map(specNoteFor).filter((note): note is string => note !== null);
     return jsonResponse({ ...payload, reportId, specNotes });
   } catch (err: unknown) {
+    if (err instanceof ReviewStorageError || err instanceof ReviewBusyError || err instanceof AnalysisCapacityError) return jsonResponse({ error: err.message }, { status: err instanceof AnalysisCapacityError ? 429 : 503, headers: { "Retry-After": "30" } });
     if (err instanceof AnalyzerProviderError) {
       console.error("Analyze provider failure", { kind: err.kind, status: err.upstreamStatus });
       return jsonResponse({ error: err.message }, { status: err.status, ...(err.status === 503 || err.status === 504 ? { headers: { "Retry-After": "60" } } : {}) });

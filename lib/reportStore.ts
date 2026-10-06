@@ -3,6 +3,7 @@ import crypto from "node:crypto";
 import { redis } from "@/lib/ratelimit";
 import type { CalculatedReport, Observations } from "@/lib/analyzerCore";
 import { clientReadout } from "@/lib/analyzerCore";
+import type { ReviewIdentity } from "./analysisConsistency";
 import type { BenchmarkEvidence } from "@/lib/iconEvidence";
 
 // Saved analysis reports power shareable /report/<id> links. Reports are
@@ -22,6 +23,7 @@ export type StoredReportAsset = {
 
 export type StoredReport = {
   v: 1;
+  title?: string;
   createdAt: string;
   platform: string;
   verdict: string;
@@ -29,6 +31,8 @@ export type StoredReport = {
   readout: ReturnType<typeof clientReadout>;
   assets: StoredReportAsset[];
   benchmarkEvidence?: BenchmarkEvidence[];
+  reviewIdentity?: ReviewIdentity;
+  reliability?: { reads: number; min: number; max: number };
 };
 
 export function newReportId(): string {
@@ -43,10 +47,13 @@ export async function saveReport(args: {
   observations: Observations;
   assets: StoredReportAsset[];
   benchmarkEvidence?: BenchmarkEvidence[];
+  reviewIdentity?: ReviewIdentity;
+  reliability?: { reads: number; min: number; max: number };
 }): Promise<string | null> {
   const id = newReportId();
   const doc: StoredReport = {
     v: 1,
+    title: args.observations.detectedText?.slice(0, 80),
     createdAt: new Date().toISOString(),
     platform: args.platform,
     verdict: args.verdict,
@@ -54,6 +61,8 @@ export async function saveReport(args: {
     readout: clientReadout(args.observations),
     assets: args.assets,
     benchmarkEvidence: args.benchmarkEvidence,
+    reviewIdentity: args.reviewIdentity,
+    reliability: args.reliability,
   };
 
   try {

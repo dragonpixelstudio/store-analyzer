@@ -1,0 +1,98 @@
+/* Shared, interactive review presentation. Store surfaces are simulations. */
+.results-overview { grid-template-columns:210px minmax(240px,1fr) 320px; }
+.results-profile { padding:22px 18px; border-left:1px solid #34383e; }
+.results-profile h2 { margin-left:8px; }
+.interactive-profile { width:100%;max-width:320px;margin:auto; }
+.interactive-profile svg { width:100%;height:auto;display:block; }
+.profile-shape { transform-origin:center;animation:radar-reveal .65s ease-out both;pointer-events:none; }
+.profile-select { display:flex;justify-content:center;gap:5px;flex-wrap:wrap; }
+.profile-select button { padding:6px 9px;border:1px solid #424750;border-radius:6px;font-size:11px;color:#c4ccd6;background:#151719;cursor:pointer; }
+.profile-select button[aria-pressed=true] { color:#ffc065;border-color:#bd8940;background:#30271b; }
+.profile-readout { display:flex;align-items:center;justify-content:center;gap:10px;margin:12px 0 6px; }
+.profile-readout strong { font-size:24px;font-variant-numeric:tabular-nums; }
+.profile-readout small { color:#abb3bf;font-size:12px;font-weight:400;margin-left:3px; }
+.profile-readout>span { font-size:12px;color:#d4dae2; }
+.profile-unassessed { display:block;text-align:center;font-size:11px;color:#aab2be; }
+.review-reference { font-size:12px;color:#aab2be;padding:0 4px; }
+.review-settings { border:1px solid #34383e;border-radius:10px;background:#151719;font-size:12px; }
+.review-settings summary { display:flex;gap:12px;align-items:center;padding:14px 18px;cursor:pointer;flex-wrap:wrap; }
+.review-settings summary span:first-child { font-variant-numeric:tabular-nums;color:#e3e7ec; }
+.review-settings summary span:nth-child(2) { color:#aab2be; }
+.review-settings summary span:last-child { margin-left:auto;color:#ffc065; }
+.review-settings dl { display:grid;grid-template-columns:1fr 2fr;gap:18px;padding:4px 18px 16px; }
+.review-settings dt { color:#aab2be;margin-bottom:5px; }
+.review-settings dd { color:#e1e5eb;overflow-wrap:anywhere; }
+.review-settings>p { border-top:1px solid #34383e;padding:12px 18px;color:#aab2be;line-height:1.6; }
+.store-preview { border:1px solid #383c43;border-radius:14px;background:#191b1e;overflow:hidden;min-width:0; }
+.store-preview-heading { display:flex;align-items:center;justify-content:space-between;gap:15px;padding:22px 24px 16px; }
+.store-preview-heading .product-eyebrow { margin:0 0 5px;font-size:10px; }
+.store-preview-heading h2 { font-size:22px;line-height:1.25; }
+.preview-free { color:#b8c0cb;font-size:12px;white-space:nowrap; }
+.store-preview-toolbar { display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;padding:0 24px 18px; }
+.preview-tabs { display:flex;gap:4px;padding:4px;border:1px solid #373c43;border-radius:9px;background:#101214; }
+.preview-tabs button { background:transparent;border:0;border-radius:5px;padding:9px 14px;color:#b8c1ce;font-size:13px;cursor:pointer;white-space:nowrap; }
+.preview-tabs button[aria-pressed=true] { background:#373026;color:#ffc065; }
+.store-preview-toolbar label,.store-preview-controls label { display:flex;align-items:center;gap:9px;color:#bcc4cf;font-size:12px; }
+.store-preview select { background:#121416;border:1px solid #49505b;border-radius:6px;padding:8px;color:#e1e5ec;max-width:220px;min-width:0; }
+.listing-stage { padding:24px;background:#0e1013;border-block:1px solid #34383e; }
+.steam-preview { max-width:1020px;margin:auto;background:#182533;border:1px solid #32485c;box-shadow:0 8px 24px #0004; }
+.steam-preview-nav { display:flex;gap:22px;padding:16px 20px;background:#121b26;color:#a5b8c9;font-size:12px; }
+.steam-preview-nav strong { color:#e4edf4;letter-spacing:.06em; }
+.steam-list-heading { display:flex;justify-content:space-between;gap:12px;padding:16px;color:#e0e9f1;font-size:13px;font-weight:600; }
+.steam-list-heading>span { color:#9bafc1;font-size:11px;font-weight:400; }
+.steam-listing { display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.05fr) minmax(0,1.3fr);gap:16px;margin:0 12px 12px;background:linear-gradient(120deg,#23394e,#111b27);border:1px solid #3b4d60; }
+.steam-listing[data-highlight=true] { outline:2px solid #ffc065;outline-offset:1px; }
+.steam-listing-art { min-width:0;background:#0c141c;overflow:hidden; }
+.steam-listing-art img { display:block;width:100%;height:100%;object-fit:cover; }
+.steam-listing-copy { padding:15px 0;min-width:0; }
+.listing-kicker { font-size:9px;letter-spacing:.08em;font-weight:650;color:#9cb4ca; }
+.steam-listing h3 { color:#f1f5f8;font-size:20px;font-weight:700;line-height:1.2;margin:8px 0;overflow-wrap:anywhere; }
+.steam-listing p { color:#b3c1cd;font-size:12px;line-height:1.55; }
+.listing-tags { display:flex;gap:5px;flex-wrap:wrap;margin-top:13px; }
+.listing-tags span { font-size:10px;color:#c6d8e7;background:#344b60;padding:3px 6px;border-radius:2px; }
+.steam-listing-media { padding:12px 12px 12px 0;min-width:0;display:flex;flex-direction:column;justify-content:center;gap:7px; }
+.steam-listing-media>img { width:100%;aspect-ratio:16/9;object-fit:contain;background:#0b1118; }
+.listing-missing { display:grid;place-content:center;text-align:center;gap:8px;aspect-ratio:16/9;border:1px dashed #4d6275;color:#9eafbf;font-size:11px; }
+.listing-missing>span:first-child { font-size:25px; }
+.listing-shot-thumbs { display:flex;gap:5px;overflow:auto; }
+.listing-shot-thumbs button { flex:0 0 28%;min-width:40px;border:1px solid #526778;cursor:pointer; }
+.listing-shot-thumbs button[aria-pressed=true] { border-color:#ffc065; }
+.listing-shot-thumbs img { width:100%;height:45px;object-fit:contain;background:#0b1118; }
+.sample-listing { opacity:.68; }
+.sample-listing .steam-listing-art { max-height:145px;aspect-ratio:auto!important; }
+.sample-gameplay { display:grid;place-content:center;aspect-ratio:16/9;background:repeating-linear-gradient(120deg,#26425755 0 20px,#18334755 20px 40px);color:#97abbd;font-size:11px; }
+[data-placement=detail] .steam-listing { grid-template-columns:220px 1fr; }
+[data-placement=detail] .steam-listing-copy { padding:12px 16px 12px 0; }
+[data-placement=detail] .steam-listing-copy p,[data-placement=detail] .listing-tags { display:none; }
+[data-placement=detail] .steam-listing-art { max-height:100px; }
+.mobile-store { width:390px;max-width:100%;margin:0 auto;background:#fafbfc;color:#18212c;border-radius:30px;padding:14px 16px 10px;border:5px solid #42484f;box-shadow:0 12px 32px #0005;font-family:var(--font-body),sans-serif; }
+.mobile-store-status { display:flex;justify-content:space-between;font-size:11px;font-weight:700;padding:0 9px; }
+.mobile-store-nav { display:flex;justify-content:space-between;gap:8px;padding:22px 4px 14px;font-size:14px;color:#2462a4; }
+.mobile-store-nav strong { color:#273341; }
+.mobile-search-query { display:flex;justify-content:space-between;background:#e9edf2;border-radius:8px;padding:10px;font-size:13px;color:#5c6c7d;margin-bottom:14px; }
+.mobile-neighbor { display:flex;gap:10px;align-items:center;padding:14px 6px;border-bottom:1px solid #dce2e7;opacity:.8; }
+.mobile-neighbor img { width:44px;height:44px;border-radius:10px; }
+.mobile-neighbor>div { flex:1; }.mobile-neighbor strong { font-size:12px; }.mobile-neighbor small { display:block;font-size:10px;color:#5a697a; }
+.mobile-install { display:block;font-size:11px;font-weight:700;border-radius:20px;padding:6px 10px;background:#e6edf4;color:#2561a6; }
+.android-store .mobile-install { background:#e0efe5;color:#25643b; }
+.mobile-your-listing { margin:12px 0;padding:12px 7px;border-radius:10px; }
+.mobile-your-listing[data-highlight=true] { outline:2px solid #b27b24; }
+.mobile-app-heading { display:flex;gap:10px;align-items:center; }
+.mobile-app-icon { width:62px;height:62px;border-radius:14px;background:#e0e5ea;overflow:hidden;flex-shrink:0; }
+.mobile-app-icon img { width:100%;height:100%; }.mobile-app-heading>div:nth-child(2) { flex:1;min-width:0; }
+.mobile-app-heading h3 { color:#18212c;font-size:15px;font-weight:700;line-height:1.3;overflow-wrap:anywhere; }
+.mobile-app-heading p { color:#5b6979;font-size:11px;margin-top:3px; }.mobile-app-heading .listing-kicker { color:#786028;font-size:8px; }
+.mobile-app-details { display:flex;justify-content:space-between;border-block:1px solid #dce2e7;padding:14px 0;margin-top:18px;font-size:10px;color:#556373; }
+.mobile-screenshots { display:flex;overflow:auto;gap:7px;margin-top:14px; }
+.mobile-screenshots>img { height:190px;width:auto;max-width:none;object-fit:contain;border-radius:7px; }
+.mobile-shot-placeholder { display:grid;place-content:center;text-align:center;padding:20px;min-height:150px;width:100%;font-size:12px;border:1px dashed #a1afbd;border-radius:8px;color:#5c6c7c;background:#f0f3f6; }
+.play-feature { width:100%;height:auto;margin-top:15px;border-radius:6px; }
+.mobile-home-line { width:95px;height:4px;background:#28323e;border-radius:4px;margin:24px auto 0; }
+.store-preview-controls { padding:16px 24px;display:flex;gap:18px;flex-wrap:wrap;align-items:center; }
+.store-preview-controls input { accent-color:#ffc065;width:15px;height:15px; }
+.store-preview-controls>span { color:#aab2be;font-size:11px;margin-left:auto; }
+.store-preview>footer { display:flex;flex-wrap:wrap;gap:6px 16px;padding:0 24px 18px;color:#aab2be;font-size:11px; }
+@media(max-width:1100px) { .results-overview { grid-template-columns:190px minmax(0,1fr); }.results-profile { display:flex;grid-column:1/-1;border-left:0;border-top:1px solid #34383e; }.results-profile h2 { text-align:center; }.interactive-profile { max-width:300px; }.steam-listing h3 { font-size:17px; } }
+@media(max-width:700px) { .listing-stage { padding:12px; }.store-preview-heading,.store-preview-toolbar,.store-preview-controls { padding-inline:16px; }.store-preview-heading h2 { font-size:20px; }.preview-tabs button { padding:8px 10px;font-size:12px; }.steam-preview-nav { gap:14px;padding:13px;font-size:10px; }.steam-preview-nav span:last-child { display:none; }.steam-list-heading { padding:12px;font-size:12px; }.steam-list-heading>span { display:none; }.steam-listing { grid-template-columns:minmax(0,1fr) minmax(0,1fr);gap:12px;margin:0 8px 10px; }.steam-listing-copy { padding:12px 9px 0 0; }.steam-listing h3 { font-size:16px; }.steam-listing p { font-size:11px; }.steam-listing-media { grid-column:1/-1;padding:0 10px 10px; }.sample-listing .steam-listing-media { display:none; }.sample-listing .steam-listing-art { max-height:90px; }.sample-listing p,.sample-listing .listing-tags { display:none; }[data-placement=detail] .steam-listing { grid-template-columns:minmax(0,1fr) minmax(0,1fr); }[data-placement=detail] .steam-listing-art { align-self:center; }.mobile-store { padding-inline:10px; }.mobile-install { padding:5px 8px; }.review-settings dl { grid-template-columns:1fr; }.store-preview select { max-width:190px; } }
+@media(max-width:600px) { .results-overview { grid-template-columns:1fr; }.results-profile { grid-column:1; }.results-profile h2 { margin:0; }.store-preview-controls>span { margin-left:0; }.review-settings summary span:nth-child(2) { order:3;width:100%; } }
+@media(prefers-reduced-motion:reduce) { .profile-shape { animation:none; } }

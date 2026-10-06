@@ -5,6 +5,7 @@ import "./globals.css";
 import "./canvas-studio.css";
 import "./product-theme.css";
 import "./results-polish.css";
+import "./store-preview.css";
 import "./artwork-editor.css";
 import "./jobs.css";
 import { SiteFooter } from "@/app/components/SiteChrome";

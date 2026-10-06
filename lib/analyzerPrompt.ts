@@ -178,7 +178,7 @@ Hard rules:
 - Do not default to "add more text". For icons, less text usually wins. If an
   icon lacks a game title, judge whether the icon mark itself is memorable; do
   not call the missing title a weakness.
-- priority_fixes must be ordered by conversion impact. Use title, why, change.
+- priority_fixes must be ordered by impact. Use title, why, change. Return an empty array if there is no supported change. Never put "no fixes needed" in a fix.
 - priority_fixes are strategic human recommendations for the report UI. They
   may include broader direction changes when the asset concept itself is weak.
 - revision_brief is a short human-readable summary only.
@@ -280,7 +280,7 @@ ICON-ONLY MODE (active for this request):
         `declared type: ${asset.providedKind}`,
         `aspect ratio: ${aspect}`,
       ];
-      if (asset.fileName) bits.push(`file: ${asset.fileName}`);
+      // Filenames are not visual evidence and must not change the review.
       return `- ${bits.join("; ")}`;
     })
     .join("\n");

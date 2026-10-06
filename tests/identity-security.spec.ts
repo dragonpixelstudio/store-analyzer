@@ -152,7 +152,7 @@ test("actual analyzer returns a reserved review slot on capacity failure",async(
  store.getPlan=async()=>"free";store.reserveReports=memory.reserveReports.bind(memory);store.settleReports=memory.settleReports.bind(memory);
  ipRatelimit.limit=async()=>({success:true,limit:99,remaining:99,reset:Date.now()+60000,pending:Promise.resolve()});
  globalRatelimit.limit=async()=>({success:false,limit:1,remaining:0,reset:Date.now()+60000,pending:Promise.resolve()});
- globalThis.fetch=async(_url,init)=>{const commands=JSON.parse(String(init?.body));const reply=(command:string[])=>({result:command[0].toLowerCase()==="hgetall"?[]:null});return Response.json(Array.isArray(commands[0])?commands.map(reply):reply(commands));};
+ globalThis.fetch=async(_url,init)=>{const commands=JSON.parse(String(init?.body));const reply=(command:string[])=>({result:command[0].toLowerCase()==="hgetall"?[]:command[0].toLowerCase()==="set"?"OK":null});return Response.json(Array.isArray(commands[0])?commands.map(reply):reply(commands));};
  const bytes=await sharp({create:{width:32,height:32,channels:3,background:"blue"}}).png().toBuffer();
  try{
   for(let i=0;i<5;i++){

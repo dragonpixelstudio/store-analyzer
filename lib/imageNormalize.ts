@@ -1,24 +1,27 @@
 import sharp from "sharp";
 
-// Consistency layer: the same artwork exported at different resolutions must
-// produce the same review. Every image is resampled to one canonical review
-// scale before Gemini sees it, and cache keys use a perceptual signature of
-// the normalized pixels instead of a byte hash - so a 460px and a 920px
-// export of the same capsule resolve to the same cached report.
+// Normalize orientation, color space and review size on the server.
+// Exact normalized pixels define identity; visually similar edited images must
+// not inherit each other's result. Lossy re-exports can have different pixels.
 
 export const ANALYSIS_EDGE = 768;
 
 export async function normalizeForAnalysis(
   buffer: Buffer
 ): Promise<{ base64: string; mimeType: string }> {
-  const png = await sharp(buffer)
+  const { data, info } = await sharp(buffer)
+    .rotate()
+    .toColourspace("srgb")
+    .flatten({ background: "#000000" })
     .resize(ANALYSIS_EDGE, ANALYSIS_EDGE, {
       fit: "inside",
       withoutEnlargement: false,
       kernel: sharp.kernel.lanczos3,
     })
-    .png()
-    .toBuffer();
+    .raw()
+    .toBuffer({ resolveWithObject: true });
+  // Re-encode decoded pixels to discard source density/EXIF/ICC containers.
+  const png = await sharp(data, { raw: { width: info.width, height: info.height, channels: info.channels } }).png().toBuffer();
 
   return { base64: png.toString("base64"), mimeType: "image/png" };
 }

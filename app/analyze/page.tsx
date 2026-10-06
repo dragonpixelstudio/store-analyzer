@@ -1,5 +1,8 @@
 "use client";
 import { artworkRequest } from "@/lib/artworkRequest";
+import StorePreview from "@/app/components/StorePreview";
+import ReviewSettings from "@/app/components/ReviewSettings";
+import type { ReviewIdentity } from "@/lib/analysisConsistency";
 import ResultsOverview, { ResultPriorities } from "@/app/components/ResultsOverview";
 
 import Image from "next/image";
@@ -10,14 +13,7 @@ import StudioHeader from "@/app/components/StudioHeader";
 import { saveHandoff, readHandoff, clearHandoff, handoffFile, fileDataUrl } from "@/lib/studioHandoff";
 import type { AnalysisStep } from "@/lib/analysisWorkflow";
 
-import ShelfSimulator, {
-  ScreenshotCarousel,
-  SteamCapsuleShelf,
-} from "@/app/components/ShelfSimulator";
-import BenchmarkDossier, {
-  referenceRoleLabel,
-  type BenchmarkEvidence,
-} from "@/app/components/BenchmarkDossier";
+import BenchmarkDossier, { type BenchmarkEvidence } from "@/app/components/BenchmarkDossier";
 import {
   BENCHMARK_GENRES,
   type BenchmarkGenre,
@@ -129,6 +125,8 @@ const GENRE_LABELS: Record<BenchmarkGenre, string> = {
 };
 
 type AnalyzePayload = {
+  reviewIdentity?: ReviewIdentity;
+  reliability?: { reads: number; min: number; max: number };
   demo?: boolean;
   workflow?: AnalysisStep[];
   error?: string;
@@ -914,6 +912,8 @@ export default function Home() {
   const [gameplay, setGameplay] = useState<GameplayReads | null>(null);
   const [emotion, setEmotion] = useState<EmotionReads | null>(null);
   const [error, setError] = useState("");
+  const [reviewIdentity, setReviewIdentity] = useState<ReviewIdentity | null>(null);
+  const [reliability, setReliability] = useState<{ reads: number; min: number; max: number } | null>(null);
   const [reportId, setReportId] = useState<string | null>(null);
   const [specNotes, setSpecNotes] = useState<string[]>([]);
   const [benchmarkEvidence, setBenchmarkEvidence] = useState<
@@ -1040,9 +1040,8 @@ export default function Home() {
         setGameName(transfer.gameName); setGamePitch(transfer.gamePitch); setTargetPlatform(transfer.platform || "auto");
         setHandoffNotice("Artwork and game details brought over from Studio. Review the settings, then run your analysis.");
         clearHandoff();
-      } else {
-        try { const saved = JSON.parse(localStorage.getItem("dpx-studio-game") || "{}"); if (typeof saved.name === "string") setGameName(saved.name.slice(0,80)); if (typeof saved.pitch === "string") setGamePitch(saved.pitch.slice(0,300)); } catch { /* optional context */ }
       }
+      // Fresh uploads start with explicit context, never an unrelated saved Studio draft.
     }, 0);
     return () => { cancelled = true; clearTimeout(timer); };
   }, []);
@@ -1123,7 +1122,7 @@ export default function Home() {
     if (usable.reduce((sum, asset) => sum + asset.file.size, 0) > 3.9 * 1024 * 1024) { setError("Keep the combined upload below 3.9 MB, or review fewer images together."); return; }
     if (targetPlatform !== "auto") fd.append("platform", targetPlatform);
     else if (detectedPlatform) fd.append("platform", detectedPlatform);
-    fd.append("gameContext", [gameName.trim(), gamePitch.trim()].filter(Boolean).join(" — "));
+    fd.append("gameContext", [gameName.trim(), gamePitch.trim()].filter(Boolean).join(" - "));
     if (benchmarkGenre !== "auto") {
       fd.append("benchmarkGenre", benchmarkGenre);
     }
@@ -1176,6 +1175,7 @@ export default function Home() {
       setRevisionBrief(data.calculated?.revisionBrief ?? "");
       setEditPlan(data.calculated?.editPlan ?? null);
       setShelf(data.shelf ?? null);
+      setReviewIdentity(data.reviewIdentity ?? null); setReliability(data.reliability ?? null);
       setClick(data.click ?? null);
       setGameplay(data.gameplay ?? null);
       setEmotion(data.emotion ?? null);
@@ -1268,7 +1268,7 @@ export default function Home() {
         await navigator.clipboard.writeText(instruction || "Review the analysis findings and preserve the original artwork identity.");
         setHandoffNotice("Revision brief copied. Use it with your preferred image editor; this asset type has no dedicated Studio format yet."); return;
       }
-      await saveHandoff({ destination: "studio", dataUrl: await fileDataUrl(asset.file), name: asset.file.name.slice(0,200), width: asset.w, height: asset.h, role: asset.role, gameName: gameName || asset.file.name.replace(/\.[^.]+$/, "").slice(0,80), gamePitch, instruction, platform: targetPlatform === "auto" ? (asset.role === "steamCapsule" ? "steam" : "unknown") : targetPlatform });
+      await saveHandoff({ destination: "studio", dataUrl: await fileDataUrl(asset.file), name: asset.file.name.slice(0,200), width: asset.w, height: asset.h, role: asset.role, gameName, gamePitch, instruction, platform: targetPlatform === "auto" ? (asset.role === "steamCapsule" ? "steam" : "unknown") : targetPlatform });
       router.push("/?from=analyze");
     } catch { setHandoffNotice("Could not transfer this image. Browser storage may be full or unavailable; download your artwork and copy the edit plan below."); }
     finally { setTransferring(false); }
@@ -1487,6 +1487,8 @@ export default function Home() {
           {demoReview && <p role="status" className="analysis-brief-notice"><strong>LOCAL SAMPLE REVIEW</strong> · Example data, not an AI review.</p>}
 
           <ResultsOverview score={score!} rows={radarRows} mode={mode} priorities={topFixes.length} risk={risk} />
+          {!demoReview && <ReviewSettings identity={reviewIdentity} reliability={reliability} />}
+          <StorePreview assets={reviewAssets.map(asset => ({ src: asset.url, kind: asset.role, width: asset.w, height: asset.h, label: asset.file.name }))} title={gameName || "Your game"} platform={reviewIdentity?.platform || targetPlatform} />
           <ResultPriorities fixes={topFixes} />
           <section className="analysis-handoff"><h2>Edit artwork</h2><p>Open a brief for free. Apply an AI edit for 1 credit.</p>{reviewAssets.map((asset,index) => <article key={asset.id}><Image src={asset.url} alt={ROLE_LABELS[asset.role]} width={76} height={64} unoptimized /><div><h3>{asset.file.name}</h3><p>{workflow.find(step => step.index === index)?.issue || "Review the findings below and choose your next change."}</p></div><button disabled={transferring} onClick={() => void improveInStudio(asset,index)}>{asset.role === "screenshot" ? "Frame in Studio · free" : asset.role === "featureGraphic" || asset.role === "keyArt" ? "Copy revision brief" : "Improve in Studio →"}</button></article>)}</section>
           {reportId && <ShareReportBar reportId={reportId} />}
@@ -1501,45 +1503,6 @@ export default function Home() {
               </p>
             </ReportCard>
           )}
-
-          {/* STORE CONTEXT - every asset shown where it will actually live */}
-          {previewAsset && (
-            <ReportCard title="Store shelf simulator">
-              <ShelfSimulator
-                iconUrl={previewAsset.url}
-                references={(
-                  benchmarkEvidence.find(
-                    (evidence) => evidence.assetKind === "icon"
-                  )?.references || []
-                ).map((reference) => ({
-                  title: reference.title,
-                  thumb: reference.thumb,
-                  sourceUrl: reference.sourceUrl,
-                  roleLabel: referenceRoleLabel(reference.role),
-                }))}
-              />
-            </ReportCard>
-          )}
-          {(() => {
-            const capsule = assets.find(
-              (a) => a.role === "steamCapsule" && !a.error && !a.overflow
-            );
-            return capsule ? (
-              <ReportCard title="Steam store preview">
-                <SteamCapsuleShelf capsuleUrl={capsule.url} />
-              </ReportCard>
-            ) : null;
-          })()}
-          {(() => {
-            const shots = assets.filter(
-              (a) => a.role === "screenshot" && !a.error && !a.overflow
-            );
-            return shots.length > 0 ? (
-              <ReportCard title="Store listing preview">
-                <ScreenshotCarousel shots={shots.map((a) => a.url)} />
-              </ReportCard>
-            ) : null;
-          })()}
 
           {benchmarkEvidence.map((evidence) => (
             <BenchmarkDossier

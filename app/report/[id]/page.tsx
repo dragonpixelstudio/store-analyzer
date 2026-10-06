@@ -1,3 +1,6 @@
+import { isActionableFix } from "@/lib/analyzerCore";
+import StorePreview from "@/app/components/StorePreview";
+import ReviewSettings from "@/app/components/ReviewSettings";
 import ResultsOverview, { ResultPriorities } from "@/app/components/ResultsOverview";
 import type { Metadata } from "next";
 import Link from "next/link";
@@ -23,10 +26,10 @@ export async function generateMetadata({
   const { id } = await params;
   const report = await loadReport(id);
   if (!report) {
-    return { title: "Report not found - Dragon Pixel Store Analyzer" };
+    return { title: "Report not found - Dragon Pixel Studio" };
   }
   return {
-    title: `Launch score ${report.calculated.launchScore}/100 - Dragon Pixel Store Analyzer`,
+    title: `Artwork score ${report.calculated.launchScore}/100 - Dragon Pixel Studio`,
     description:
       report.calculated.summaryLine ||
       "A scored conversion review of game store assets.",
@@ -116,7 +119,7 @@ export default async function SharedReportPage({ params }: { params: Params }) {
   const report = await loadReport(id);
   if (!report) notFound();
 
-  const c = report.calculated;
+  const c = { ...report.calculated, topFixes: report.calculated.topFixes.filter(fix => isActionableFix(fix.action)) };
   const RADAR_LABELS: Record<string, string> = {
     shelfReadability: "Shelf",
     clickPull: "Click",
@@ -149,6 +152,8 @@ export default async function SharedReportPage({ params }: { params: Params }) {
 
       <RevealFlow className="mt-6 flex flex-col gap-4">
         <ResultsOverview score={c.launchScore} rows={radarRows} mode={c.reviewModeLabel} priorities={c.topFixes.length} risk={c.conversionRisk} />
+        <ReviewSettings identity={report.reviewIdentity} reliability={report.reliability} />
+        <StorePreview assets={report.assets.map(asset => ({ src: asset.thumb, kind: asset.kind, width: asset.widthPx, height: asset.heightPx, label: asset.label }))} title={report.title || "Your game"} platform={report.platform} />
         <ResultPriorities fixes={c.topFixes} />
         <details className="result-evidence"><summary>Reviewed artwork & evidence</summary><div>
         {/* Reviewed assets */}
