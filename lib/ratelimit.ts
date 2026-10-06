@@ -13,6 +13,8 @@ export const ipRatelimit = new Ratelimit({
   analytics: true,
 });
 
+export const reviewWalletLimit = new Ratelimit({ redis, limiter: Ratelimit.slidingWindow(30, "1 h"), prefix: storagePrefix() + "analyze:wallet" });
+
 export const globalRatelimit = new Ratelimit({
   redis,
   limiter: Ratelimit.fixedWindow(300, "1 d"),

@@ -288,13 +288,15 @@ export default function StudioApp({ availableImages }: { availableImages: string
         setStorageReady(true);
       }
     }, 0);
-    fetch("/api/account/status")
+    const refreshCredits = () => { void fetch("/api/account/status", { cache: "no-store" })
       .then((r) => { if (!r.ok) throw new Error("Balance unavailable"); return r.json(); })
       .then((d) => {
-        if (typeof d?.credits?.remaining === "number") setCredits(d.credits.remaining);
+        if (typeof d?.credits?.remaining === "number") { setCredits(d.credits.remaining); setCreditError(false); }
       })
-      .catch(() => setCreditError(true));
-    return () => clearTimeout(id);
+      .catch(() => setCreditError(true)); };
+    refreshCredits();
+    window.addEventListener("dpx-wallet-changed", refreshCredits);
+    return () => { clearTimeout(id); window.removeEventListener("dpx-wallet-changed", refreshCredits); };
   }, []);
 
   useEffect(() => {

@@ -28,3 +28,28 @@ test("temporary poll outages still recover without resubmitting model work", asy
     expect((await(await artworkRequest("/api/analyze",{method:"POST"})).json()).score).toBe(75);expect(methods).toEqual(["POST","GET","GET"]);
   }finally{globalThis.fetch=originalFetch;globalThis.setTimeout=originalTimer;}
 });
+
+test("review credit confirmation resubmits once with consent and a new request ID", async () => {
+ const original = globalThis.fetch;
+ try {
+  for (const consent of [false, true]) {
+   const calls: RequestInit[] = []; let prompts = 0;
+   globalThis.fetch = async (_url, init) => { calls.push(init!); return calls.length === 1 ? Response.json({ code: "ANALYSIS_LIMIT", canUseCredits: true, error: "Free slots used" }, { status: 429 }) : Response.json({ reportId: "paid-review" }); };
+   const form = new FormData(); form.set("gameContext", "Keep my context"); form.append("creatives", new Blob(["test"]), "art.png");
+   const result = await artworkRequest("/api/analyze", { method: "POST", headers: { "Idempotency-Key": "original-request-id" }, body: form }, message => { prompts++; expect(message).toContain("1 credit"); return consent; });
+   expect(prompts).toBe(1); expect(calls.length).toBe(consent ? 2 : 1); expect(form.has("creditConsent")).toBe(false);
+   if (consent) { const body = calls[1].body as FormData; expect(body.get("creditConsent")).toBe("1"); expect(body.get("gameContext")).toBe("Keep my context"); expect((body.get("creatives") as File).name).toBe("art.png"); expect(new Headers(calls[1].headers).get("Idempotency-Key")).not.toBe("original-request-id"); expect((await result.json()).reportId).toBe("paid-review"); }
+   else expect(result.status).toBe(429);
+  }
+ } finally { globalThis.fetch = original; }
+});
+
+test("hourly and provider limits never prompt for payment or retry automatically", async () => {
+ const original = globalThis.fetch;
+ try {
+  for (const data of [{ error: "Hourly limit" }, { code: "ANALYSIS_LIMIT", canUseCredits: false }]) {
+   let calls = 0; globalThis.fetch = async () => { calls++; return Response.json(data, { status: 429 }); };
+   await artworkRequest("/api/analyze", { method: "POST", body: new FormData() }, () => { throw new Error("Unexpected payment prompt"); }); expect(calls).toBe(1);
+  }
+ } finally { globalThis.fetch = original; }
+});

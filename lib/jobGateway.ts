@@ -79,7 +79,7 @@ export async function readArtworkJob(req: NextRequest, id: string) {
     if(!result) return reply({error:"Artwork result expired."},410);
     const data=JSON.parse(result.body);
     if (job.kind === "analyze") data.analysisReturned = job.analysisReturned === true;
-    if(data.credits && job.charged !== undefined) data.credits={...data.credits,charged:job.charged,refunded:job.refunded,pending:false,remaining:await getCreditStore().getBalance(account).catch(()=>null)};
+    if(job.charged !== undefined) data.credits={...data.credits,charged:job.charged,refunded:job.refunded,pending:false,remaining:await getCreditStore().getBalance(account).catch(()=>null)};
     const response=reply(data,result.status);
     response.headers.set("X-Artwork-Job-State", "done");
     if(result.retryAfter) response.headers.set("Retry-After",result.retryAfter);

@@ -99,12 +99,12 @@ export class ArtworkJobStore {
   complete(job: ArtworkJob, result: JobResult, billing: JobBilling, now = Date.now()) {
     if(billing.account !== job.account || billing.operation !== job.operation) throw new Error("Result owner mismatch");
     const charged=billing.charged ?? 0;
-    const ledger={id:job.operation,kind:"generation",amount:-charged,at:new Date(now).toISOString(),label:charged?"Image generation":"Generation cancelled · credits returned"};
+    const ledger={id:job.operation,kind:job.kind === "analyze" ? "analysis" : "generation",amount:-charged,at:new Date(now).toISOString(),label:job.kind === "analyze" ? (charged ? "Artwork review" : "Review failed · credit returned") : (charged ? "Image generation" : "Generation cancelled · credits returned")};
     return this.redis.eval<unknown[],number>(COMPLETE,this.keys(job),[now,JSON.stringify(result),charged,billing.reserved ?? -1,JSON.stringify(ledger)]);
   }
   expire(job: ArtworkJob, now = Date.now()) {
-    const result: JobResult={status:504,body:JSON.stringify({error:"This job was interrupted. Any pending generation credits have been returned. You can try again."})};
-    const ledger={id:job.operation,kind:"generation",amount:0,at:new Date(now).toISOString(),label:"Interrupted job · credits returned"};
+    const result: JobResult={status:504,body:JSON.stringify({error:"This job was interrupted. Any pending credits have been returned. You can try again."})};
+    const ledger={id:job.operation,kind:job.kind === "analyze" ? "analysis" : "generation",amount:0,at:new Date(now).toISOString(),label:"Interrupted job · credits returned"};
     return this.redis.eval<unknown[],number>(EXPIRE,this.keys(job),[now,JSON.stringify(result),JSON.stringify(ledger)]);
   }
 }

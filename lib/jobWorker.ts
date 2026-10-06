@@ -32,7 +32,7 @@ export async function artworkWorker(req: Request, store=new ArtworkJobStore(), r
     result={status:response.status,body:text,retryAfter:response.headers.get("retry-after") || undefined};
   } catch {
     billing.charged=0;
-    result={status:502,body:JSON.stringify({error:"Artwork processing failed. Any reserved generation credits have been returned."})};
+    result={status:502,body:JSON.stringify({error:"Artwork processing failed. Any reserved credits have been returned."})};
   }
   // Retry only publication, not expensive model work. If storage remains down,
   // owner polling eventually expires the job and refunds its reservation.

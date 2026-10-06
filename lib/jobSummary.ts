@@ -8,5 +8,5 @@ export function summarizeJob(job: ArtworkJob, result: JobResult | null) {
       try { const data = JSON.parse(result.body); if (typeof data.reportId === "string" && /^[A-Za-z0-9_-]{8,24}$/.test(data.reportId)) reportId = data.reportId; } catch { outcome = "unavailable"; }
     }
   }
-  return { id: job.id, kind: job.kind, state: job.state, created: job.created, outcome, reportId, analysisReturned: job.analysisReturned === true };
+  return { id: job.id, kind: job.kind, state: job.state, created: job.created, outcome, reportId, analysisReturned: job.analysisReturned === true, charged: job.charged, refunded: job.refunded };
 }

@@ -41,6 +41,7 @@ type AccountPlan = "free" | "quick" | "indie" | "pro";
 type AccountStatus = {
   plan: AccountPlan;
   isSubscriber: boolean;
+  ownerTestingUntil?: number | null;
   credits?: { remaining?: number };
 };
 
@@ -1276,6 +1277,7 @@ export default function Home() {
     <StudioHeader />
     <main className="analysis-page">
       <header className="analysis-heading"><div><p className="product-eyebrow">ANALYZE</p><h1>{hasResult ? "Analysis results" : "Review your artwork"}</h1>{!hasResult && <p>Upload your assets. Review the signals. Edit in Studio.</p>}</div><Link href="/">Back to Studio →</Link></header>
+      {account?.ownerTestingUntil && <p className="analysis-brief-notice" role="status"><strong>Owner testing active</strong> · Reviews do not use credits or daily slots. Provider capacity limits still apply.</p>}
       {handoffNotice && !hasResult && <p role="status" className="analysis-brief-notice">{handoffNotice}</p>}
 
       {!hasResult && !loading && (
@@ -1448,7 +1450,7 @@ export default function Home() {
           </div>
         </section>
 
-        <aside className="analysis-side"><h2>What’s checked</h2><ol><li><strong>Read at a glance</strong><p>Focal point, title and small-size readability.</p></li><li><strong>Understand the evidence</strong><p>Gameplay clarity, when screenshots are supplied.</p></li><li><strong>Bring the brief to Studio</strong><p>Send the image and revision brief to Studio.</p></li></ol><div><p>Analysis uses separate daily limits. Opening a brief costs nothing. AI generation or editing costs 1 credit per delivered image.</p><Link href="/pricing">How credits work →</Link><p>Scores are AI-assisted estimates, not audience testing or a promise of sales.</p></div></aside>
+        <aside className="analysis-side"><h2>What’s checked</h2><ol><li><strong>Read at a glance</strong><p>Focal point, title and small-size readability.</p></li><li><strong>Understand the evidence</strong><p>Gameplay clarity, when screenshots are supplied.</p></li><li><strong>Bring the brief to Studio</strong><p>Send the image and revision brief to Studio.</p></li></ol><div><p>3 free reviews daily, shared by wallet and network. Extra reviews cost 1 credit with your confirmation. Failed reviews return their slot or credit.</p><Link href="/pricing">How credits work →</Link><p>Scores are AI-assisted estimates, not audience testing or a promise of sales.</p></div></aside>
         </div>
         {/* SAMPLE - a real saved report (SAMPLE_REPORT_ID); renders nothing if unset */}
         <SampleShowcase>

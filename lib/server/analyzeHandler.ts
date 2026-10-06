@@ -1,5 +1,5 @@
 import { currentJobBilling } from "@/lib/jobContext";
-import { getCreditStore } from "@/lib/credits";
+import { reviewAccess, reserveReview, settleReview, type ReviewReservation } from "@/lib/reviewBilling";
 import { ANALYZER_TIMEOUT_MS, ANALYZER_CONFIG, GENRE_CONFIG, AnalyzerProviderError, collectAnalysisRuns, readAnalyzerObservations } from "@/lib/analyzerProvider";
 import { sandboxAnalysis } from "@/lib/sandboxAnalysis";
 import { analysisWorkflow } from "@/lib/analysisWorkflow";
@@ -36,7 +36,6 @@ import {
   signaturesClose,
 } from "@/lib/imageNormalize";
 import { identifyAsset, ROLE_LABEL } from "@/lib/storeSpecs";
-import { reserveAnalysis } from "@/lib/analysisQuota";
 import {
   attachBenchmarkComparison,
   benchmarkEvidencePrompt,
@@ -50,7 +49,7 @@ import {
   type BenchmarkGenre,
 } from "@/lib/benchmarkCatalog";
 import crypto from "node:crypto";
-import { ipRatelimit, globalRatelimit, getClientIp, redis } from "@/lib/ratelimit";
+import { reviewWalletLimit, ipRatelimit, globalRatelimit, getClientIp, redis } from "@/lib/ratelimit";
 
 export const runtime = "nodejs";
 export const maxDuration = 60;
@@ -62,6 +61,8 @@ const MAX_IMAGE_PIXELS = 12_000_000;
 type JsonBody =
   | {
       error: string;
+      code?: string;
+      canUseCredits?: boolean;
     }
   | {
       observations: Observations;
@@ -362,18 +363,19 @@ export async function OPTIONS(req: Request) {
 }
 
 export async function POST(req: Request) {
-  let reservation: string | undefined;
-  const response = await analyzeRequest(req, id => { reservation = id; });
-  // Background jobs settle together with durable result publication instead.
-  if (reservation && !currentJobBilling()) await getCreditStore().settleReports(reservation, response.ok);
-  return response;
+  let reservation: ReviewReservation | undefined;
+  const response = await analyzeRequest(req, value => { reservation = value; });
+  if (!reservation) return response;
+  await settleReview(reservation, response.ok);
+  const paid = reservation.mode === "credit";
+  return Response.json({ ...await response.json(), reviewBilling: reservation.mode, ...(paid ? { credits: { charged: response.ok ? 1 : 0, refunded: response.ok ? 0 : 1, pending: !!currentJobBilling() } } : {}) }, { status: response.status, headers: response.headers });
 }
 
-async function analyzeRequest(req: Request, reserved: (id: string) => void) {
+async function analyzeRequest(req: Request, reserved: (value: ReviewReservation) => void) {
   try {
     if (!sameOrigin(req)) {
       return jsonResponse(
-        { error: "Requests must come from Dragon Pixel Store Analyzer." },
+        { error: "Requests must come from Dragon Pixel Studio." },
         { status: 403 }
       );
     }
@@ -387,7 +389,10 @@ async function analyzeRequest(req: Request, reserved: (id: string) => void) {
 
     const ip = getClientIp(req);
 
-    const perIp = await ipRatelimit.limit(ip);
+    const access = await reviewAccess(req);
+    const perIp = access.account && (access.owner || access.balance >= 1)
+      ? await reviewWalletLimit.limit(access.account)
+      : await ipRatelimit.limit(ip);
     if (!perIp.success || perIp.reason === "timeout") {
       return jsonResponse(
         { error: "You've hit the hourly limit. Please try again later." },
@@ -551,8 +556,8 @@ async function analyzeRequest(req: Request, reserved: (id: string) => void) {
     // Every response gets a persisted, shareable report - including cache
     // hits, which mint a fresh link from the cached payload.
     // Enforce both identities before fixtures, caches, report writes or AI calls.
-    const allowance = await reserveAnalysis(req);
-    if (!allowance.success) return jsonResponse({ error: allowance.error }, { status: 429, headers: { "Retry-After": String(allowance.retryAfter) } });
+    const allowance = await reserveReview(req, formData.get("creditConsent") === "1", access);
+    if (!allowance.success) return jsonResponse({ error: allowance.error, code: allowance.code, canUseCredits: allowance.canUseCredits }, { status: allowance.status, ...(allowance.retryAfter ? { headers: { "Retry-After": String(allowance.retryAfter) } } : {}) });
     reserved(allowance.reservation);
     if (localFixturesEnabled()) return jsonResponse(sandboxAnalysis(assetMetas));
 

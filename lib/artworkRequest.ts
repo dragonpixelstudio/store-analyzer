@@ -1,4 +1,22 @@
-export async function artworkRequest(url: string, init: RequestInit): Promise<Response> {
+// All analysis entry points share the same explicit consent step. Cancellation
+// returns the free-limit response and never submits paid work.
+export async function artworkRequest(url: string, init: RequestInit, confirmSpend = (message: string) => typeof window !== "undefined" && window.confirm(message)): Promise<Response> {
+  const response = await singleArtworkRequest(url, init);
+  if (url !== "/api/analyze" || response.status !== 429 || !(init.body instanceof FormData) || init.body.has("creditConsent")) return response;
+  const data = await response.clone().json().catch(() => null);
+  if (data?.code !== "ANALYSIS_LIMIT" || data.canUseCredits !== true) return response;
+  if (!confirmSpend("Free reviews are used or processing. Use 1 credit for another review? Failed reviews return the credit.")) return response;
+  const body = new FormData();
+  init.body.forEach((value, key) => body.append(key, value));
+  body.set("creditConsent", "1");
+  const headers = new Headers(init.headers);
+  headers.set("Idempotency-Key", crypto.randomUUID());
+  const paid = await singleArtworkRequest(url, { ...init, headers, body });
+  if (typeof window !== "undefined") window.dispatchEvent(new Event("dpx-wallet-changed"));
+  return paid;
+}
+
+async function singleArtworkRequest(url: string, init: RequestInit): Promise<Response> {
   const headers=new Headers(init.headers);
   if(!headers.has("Idempotency-Key")) headers.set("Idempotency-Key",crypto.randomUUID());
   let response=await fetch(url,{...init,headers});

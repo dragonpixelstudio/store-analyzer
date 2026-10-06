@@ -3,7 +3,7 @@ import { CONTACT_EMAIL, PageShell, PolicySection } from "@/app/components/SiteCh
 
 export const metadata: Metadata = {
   title: "Terms of Service | Dragon Pixel Studio",
-  description: "Terms of service for Dragon Pixel Studio: algorithmic asset reports, edit plans, and generation credits.",
+  description: "Terms of service for Dragon Pixel Studio: algorithmic asset reports, edit plans, and artwork credits.",
 };
 
 export default function TermsPage() {
@@ -14,7 +14,7 @@ export default function TermsPage() {
       intro="These terms explain how analysis reports, one-time credit packs, and AI store artwork work."
     >
       <p className="mb-7 text-[13px] font-medium text-[var(--text-4)]">
-        Effective date: September 23, 2026
+        Effective date: October 6, 2026
       </p>
 
       <PolicySection title="1. Agreement">
@@ -30,7 +30,7 @@ export default function TermsPage() {
           Dragon Pixel Studio creates icons, capsules and thumbnails, frames real gameplay, and reviews store creative for potential communication issues
           such as readability, click pull, gameplay clarity, emotional signal, and visual polish.
           The analyzer provides automated reports, priority fixes, and revision briefs. Credit packs
-          pay for generated images and AI edits. Resizing, exports, and gameplay screenshot layouts are free.
+          pay for generated images, AI edits and optional extra reviews. Resizing, exports, and gameplay screenshot layouts are free.
         </p>
         <p>
           The service does not guarantee app store approval, downloads, rankings, revenue, ad
@@ -69,7 +69,7 @@ export default function TermsPage() {
           One credit pays for one delivered image or AI edit. Credits are reserved while work runs;
           failed work returns the reservation. Interrupted requests recover when the wallet is checked
           after 15 minutes. Scores do not guarantee improvement or change the cost of delivered work.
-          Analysis does not use generation credits and has separate usage limits.
+          Three reviews per day are free, shared by wallet and network, resetting at 00:00 UTC. After the free allowance, an extra review costs one credit only with your confirmation. Failed reviews return their free slot or reserved credit. Provider capacity and abuse limits still apply.
         </p>
       </PolicySection>
 

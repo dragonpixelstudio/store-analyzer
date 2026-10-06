@@ -7,9 +7,9 @@ import { saveHandoff } from "@/lib/studioHandoff";
 import type { CalculatedReport } from "@/lib/analyzerCore";
 import ResultsOverview, { ResultPriorities } from "./ResultsOverview";
 
-type Job={id:string;kind:string;state:string;created:number;outcome:string;reportId?:string;analysisReturned?:boolean};
+type Job={id:string;kind:string;state:string;created:number;outcome:string;reportId?:string;analysisReturned?:boolean;refunded?:number};
 type ImageResult={base64:string;mimeType:string;width?:number;height?:number};
-type Result={error?:string;image?:ImageResult;variants?:ImageResult[];reportId?:string;calculated?:CalculatedReport;analysisReturned?:boolean};
+type Result={error?:string;image?:ImageResult;variants?:ImageResult[];reportId?:string;calculated?:CalculatedReport;analysisReturned?:boolean;credits?:{charged?:number;refunded?:number}};
 const label=(kind:string)=>kind==="analyze"?"Artwork review":kind==="fix"?"Artwork variants":"Studio artwork";
 const status:Record<string,string>={succeeded:"Ready",failed:"Failed",running:"Processing",queued:"Queued",unavailable:"Expired"};
 export default function RecentJobs({id}:{id?:string}) {
@@ -51,13 +51,13 @@ export default function RecentJobs({id}:{id?:string}) {
   return <>
     {waiting && <div className="job-notice" role="status"><span className="job-badge" data-status="running">Processing</span><h2>{id?"Preparing your result":"Loading recent jobs"}</h2><p>You can return here when it is ready.</p></div>}
     {error && <div className="job-notice" role="alert"><h2>Could not load this result</h2><p>{error}</p><button className="job-action" onClick={()=>window.location.reload()}>Try again</button></div>}
-    {failed && <div className="job-notice" role="status"><span className="job-badge" data-status="failed">Not completed</span><h2>No result was produced</h2><p>{result?.error}</p>{result?.analysisReturned && <p className="job-refund">Your free review slot was returned. Generation credits were not used.</p>}<div className="job-actions"><Link className="job-action" href="/analyze">Review an image</Link><Link className="job-action secondary" href="/">Open Studio</Link></div></div>}
+    {failed && <div className="job-notice" role="status"><span className="job-badge" data-status="failed">Not completed</span><h2>No result was produced</h2><p>{result?.error}</p>{result?.analysisReturned && <p className="job-refund">Your free review slot was returned. Credits were not used.</p>}{!!result?.credits?.refunded && <p className="job-refund">{result.credits.refunded} credit returned.</p>}<div className="job-actions"><Link className="job-action" href="/analyze">Review an image</Link><Link className="job-action secondary" href="/">Open Studio</Link></div></div>}
     {!id && !waiting && !error && <>
       <div className="jobs-toolbar"><span>{jobs.filter(job=>job.outcome==="succeeded").length} ready to view</span><span>Available for 24 hours</span></div>
       {!jobs.length && <div className="job-notice"><h2>Your artwork will appear here</h2><p>Completed reviews and generated images are saved to this wallet.</p><Link className="job-action" href="/analyze">Review an image</Link></div>}
       <div className="jobs-list">{jobs.map(job=><article className="job-card" key={job.id}>
         <div className="job-symbol" aria-hidden="true">{job.kind==="analyze"?"▥":"▧"}</div>
-        <div className="job-description"><h2>{label(job.kind)}</h2><time dateTime={new Date(job.created).toISOString()}>{new Date(job.created).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}</time>{job.analysisReturned && <p className="job-refund">Review slot returned</p>}</div>
+        <div className="job-description"><h2>{label(job.kind)}</h2><time dateTime={new Date(job.created).toISOString()}>{new Date(job.created).toLocaleString(undefined,{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"})}</time>{job.analysisReturned && <p className="job-refund">Review slot returned</p>}{!!job.refunded && <p className="job-refund">{job.refunded} credit returned</p>}</div>
         <span className="job-badge" data-status={job.outcome}>{status[job.outcome] || "Processing"}</span>
         <Link className={`job-action ${job.outcome==="succeeded"?"":"secondary"}`} href={job.outcome==="succeeded" && job.reportId?`/report/${job.reportId}`:`/jobs/${job.id}`}>{job.outcome==="succeeded"?"View result":job.outcome==="failed"?"View details":"Check status"}<span aria-hidden="true"> →</span></Link>
       </article>)}</div>

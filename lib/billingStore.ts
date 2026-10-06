@@ -4,7 +4,7 @@ import { Redis } from "@upstash/redis";
 
 export type Order = { id: string; accountKey: string; productId: string; productKey: string; credits: number; cents: number; currency: string; state: "pending" | "paid" | "refunded" | "failed" | "cancelled"; createdAt: string; paymentId?: string };
 export type Payment = { id: string; accountKey: string; credits: number; amount: number; currency: string; orderId?: string; refundedAmount: number; revokedCredits: number; plan?: string; providerVerifiedAmount?: number };
-export type LedgerEntry = { id: string; kind: "purchase" | "refund" | "generation"; amount: number; at: string; label: string };
+export type LedgerEntry = { id: string; kind: "purchase" | "refund" | "generation" | "analysis"; amount: number; at: string; label: string };
 
 // Payment IDs and refund IDs have no expiry: a delayed retry must never mint credits.
 export const SETTLE_PAYMENT = `
@@ -42,6 +42,9 @@ return delta+1`;
 
 export const START_GENERATION = `
 if redis.call('EXISTS',KEYS[2])==1 then return -1 end
+if KEYS[4] and KEYS[4]~='' then
+ local job=redis.call('GET',KEYS[4]); if not job or cjson.decode(job).state~='running' then return -1 end
+end
 local balance=tonumber(redis.call('GET',KEYS[1]) or '0'); local cost=tonumber(ARGV[1])
 if balance<cost then return 0 end
 redis.call('DECRBY',KEYS[1],cost)
@@ -83,16 +86,16 @@ export class BillingStore {
     if (result < 0) throw new Error("Refund cannot be reconciled");
     return result > 0;
   }
-  async beginGeneration(account: string, id: string, amount: number) {
+  async beginGeneration(account: string, id: string, amount: number, activeJobId?: string) {
     if (!Number.isSafeInteger(amount) || amount < 1 || amount > 3) throw new Error("Invalid generation cost");
-    const result = await this.redis.eval<unknown[], number>(START_GENERATION, [this.key("bal", account), this.key("op", `${account}:${id}`), this.key("pending", account)], [amount, Date.now(), id]);
+    const result = await this.redis.eval<unknown[], number>(START_GENERATION, [this.key("bal", account), this.key("op", `${account}:${id}`), this.key("pending", account), activeJobId ? this.key("artwork-job", activeJobId) : ""], [amount, Date.now(), id]);
     if (result === 1) recordJobReservation(account, id, amount);
     return result;
   }
-  async finishGeneration(account: string, id: string, charged: number) {
+  async finishGeneration(account: string, id: string, charged: number, kind: "generation" | "analysis" = "generation") {
     if (!Number.isSafeInteger(charged) || charged < 0 || charged > 3) throw new Error("Invalid generation settlement");
     if (deferJobSettlement(account, id, charged)) return 1;
-    const entry: LedgerEntry = { id, kind: "generation", amount: -charged, at: new Date().toISOString(), label: charged ? "Image generation" : "Generation cancelled · credits returned" };
+    const entry: LedgerEntry = { id, kind, amount: -charged, at: new Date().toISOString(), label: kind === "analysis" ? (charged ? "Artwork review" : "Review failed · credit returned") : (charged ? "Image generation" : "Generation cancelled · credits returned") };
     const result = await this.redis.eval<unknown[], number>(FINISH_GENERATION, [this.key("bal", account), this.key("op", `${account}:${id}`), this.key("pending", account), this.key("ledger", account)], [charged, id, JSON.stringify(entry)]);
     if (result < 0) throw new Error("Generation settlement does not match reservation");
     return result;

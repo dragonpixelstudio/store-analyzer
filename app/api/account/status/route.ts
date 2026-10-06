@@ -1,3 +1,4 @@
+import { ownerTestAccess } from "@/lib/ownerTesting";
 import { accountRequestAllowed } from "@/lib/ratelimit";
 import { NextRequest, NextResponse } from "next/server";
 import { callerKey, ensureTrialSeed, getCreditStore, isDeveloperRequest } from "@/lib/credits";
@@ -14,8 +15,8 @@ export async function GET(req: NextRequest) {
     const billing = billingStore();
     await billing.recoverStaleGenerations(key);
     const store = getCreditStore();
-    const [remaining, plan, history] = await Promise.all([store.getBalance(key), store.getPlan(key), billing.history(key)]);
-    return NextResponse.json({ account: { plan, isSubscriber: plan !== "free", hasWallet: !!walletKey(req) }, credits: { remaining }, history }, { headers: { "Cache-Control": "private, no-store" } });
+    const [remaining, plan, history, owner] = await Promise.all([store.getBalance(key), store.getPlan(key), billing.history(key), ownerTestAccess(req)]);
+    return NextResponse.json({ account: { plan, isSubscriber: plan !== "free", hasWallet: !!walletKey(req), ownerTestingUntil: owner?.expiresAt ?? null }, credits: { remaining }, history }, { headers: { "Cache-Control": "private, no-store" } });
   } catch {
     return NextResponse.json({ error: "Credit balance is temporarily unavailable. Please retry." }, { status: 503 });
   }
